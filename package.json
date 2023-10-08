@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "generateQIF": "node bank-csv-to-qif main",
+    "generateQIF": "node txnfile-to-qif main",
     "importQIF": "node qif-to-sql main"
   },
   "dependencies": {
