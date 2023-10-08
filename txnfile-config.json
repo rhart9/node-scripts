@@ -1,0 +1,12 @@
+{
+    "citizens": {
+        "qifType": "Bank",
+        "skipFirstLine": true,
+        "reverseSign": false
+    },
+    "citizensCC": {
+        "qifType": "CCard",
+        "skipFirstLine": true,
+        "reverseSign": true
+    }
+}
