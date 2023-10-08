@@ -1,4 +1,5 @@
 require('dotenv').config();
+let config;
 
 function qifEntry(date, amount, payee) {
     return `
@@ -10,24 +11,17 @@ P${payee}
 }
 
 function processFile(lines, fileType) {
-    let qifType, skipFirstLine;
+    let fileConfig = config.get(fileType);
 
-    if (fileType.toLowerCase() == "citizens") {
-        qifType = "Bank";
-        skipFirstLine = true;
-        reverseSign = false;
-    }
-    else if (fileType.toLowerCase() == "citizenscc") {
-        qifType = "CCard";
-        skipFirstLine = true;
-        reverseSign = true;
-    }
+    let qifType = fileConfig.qifType;
+    let skipFirstLine = fileConfig.skipFirstLine;
+    let reverseSign = fileConfig.reverseSign;
 
     let text = `!Type:${qifType}\n`
 
     lines.forEach(function (line, i) {
         if (line.length > 0 && (!skipFirstLine || i > 0)) {
-            let date, payee, amount, reward;
+            let date, payee, amount;
             let skipEntry = false;
 
             if (fileType.toLowerCase() == "citizens") {
@@ -41,6 +35,7 @@ function processFile(lines, fileType) {
             else if (fileType.toLowerCase() == "citizenscc") {
                 line = "\"," + line + ",\"";  // so dumb
                 
+                let reward;
                 [, date, , , , , , , payee, , , , , amount, reward, ] = line.split("\",\"").map(col => col.replace(/"/g,""));
                 
                 let [year, month, day] = date.split('-')
@@ -69,6 +64,8 @@ module.exports = {
     main: function(fileType, inputFileName) {
         console.log("QIF file generation started");
         
+        config = new Map(Object.entries(require('./txnfile-config')));
+
         const fs = require('fs');
         const path = require('path');
 
