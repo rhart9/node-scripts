@@ -1,0 +1,22 @@
+{
+    "inputTypes": {
+        "citizens": {
+            "outputType": "citizens",
+            "skipFirstLine": true,
+            "reverseSign": false
+        },
+        "citizenscc": {
+            "outputType": "citizenscc",
+            "skipFirstLine": true,
+            "reverseSign": true
+        }
+    },
+    "outputTypes": {
+        "citizens": {
+            "qifType": "Bank"
+        },
+        "citizenscc": {
+            "qifType": "CCard"
+        }
+    }
+}

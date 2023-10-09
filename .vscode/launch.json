@@ -5,6 +5,20 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "generateQIF",
+            "request": "launch",
+            "runtimeArgs": [
+                "run",
+                "generateQIF"
+            ],
+            "runtimeExecutable": "npm",
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "type": "node"
+        },
+
+        {
             "name": "importQIF",
             "request": "launch",
             "runtimeArgs": [
