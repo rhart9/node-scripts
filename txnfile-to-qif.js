@@ -57,7 +57,7 @@ function processFile(lines, fileType, fileConfig) {
 }
 
 module.exports = {
-    main: function(fileType, inputFileName) {
+    main: function() {
         console.log("QIF file generation started");
         
         let configs = new Map(Object.entries(require('./txnfile-config')));
@@ -69,27 +69,31 @@ module.exports = {
 
         let quickenFolder = process.env.QIF_IMPORT_FOLDER;
         let archiveFolder = process.env.BANK_CSV_ARCHIVE;
+        let activeFolder = process.env.BANK_CSV_ACTIVE;
 
         let outputFileMap = new Map();
         
-        // loop fileType and inputFileName here
+        let files = JSON.parse(fs.readFileSync(path.join(activeFolder, "fileinfo.json"))).files;
 
-        let lines = fs
-            .readFileSync(inputFileName, 'utf-8')
-            .split('\n');
+        files.forEach(fileInfo => {
+            let fileType = fileInfo.fileType;
+            let inputFileName = path.join(activeFolder, fileInfo.fileName);
 
-        let inputConfig = inputConfigs.get(fileType);
-        let outputType = inputConfig.outputType;
-        let outputConfig = outputConfigs.get(outputType);
-        let qifType = outputConfig.qifType;
+            let lines = fs
+                .readFileSync(inputFileName, 'utf-8')
+                .split('\n');
 
-        if (!outputFileMap.has(outputType)) {
-            outputFileMap.set(outputType, { "text": `!Type:${qifType}\n` });
-        }
+            let inputConfig = inputConfigs.get(fileType);
+            let outputType = inputConfig.outputType;
+            let outputConfig = outputConfigs.get(outputType);
+            let qifType = outputConfig.qifType;
 
-        outputFileMap.get(outputType).text += processFile(lines, fileType, inputConfig);
+            if (!outputFileMap.has(outputType)) {
+                outputFileMap.set(outputType, { "text": `!Type:${qifType}\n` });
+            }
 
-        // end loop
+            outputFileMap.get(outputType).text += processFile(lines, fileType, inputConfig);
+        })
 
         outputFileMap.forEach((value, outputType) => {
             let outputPath = path.join(quickenFolder, `transactions-${outputType}.qif`);
@@ -98,12 +102,13 @@ module.exports = {
             console.log(`QIF file generated.\nType: ${outputType}\nOutput File: ${outputPath}`);
         })
 
-        // loop inputFileName again
-
-        let pathObj = path.parse(inputFileName);
-        let archiveFileName = path.join(archiveFolder, `${pathObj.name}.${(new Date()).toJSON().replace(/:/g, "")}${pathObj.ext}`);
-        fs.renameSync(inputFileName, archiveFileName)
-        console.log(`Input file archived to ${archiveFileName}`);
+        files.forEach(fileInfo => {
+            let inputFileName = fileInfo.fileName;
+            let pathObj = path.parse(inputFileName);
+            let archiveFileName = path.join(archiveFolder, `${pathObj.name}.${(new Date()).toJSON().replace(/:/g, "")}${pathObj.ext}`);
+            fs.renameSync(path.join(activeFolder, inputFileName), archiveFileName)
+            console.log(`Input file archived to ${archiveFileName}`);
+        })
 
         return "Process complete."
     }
