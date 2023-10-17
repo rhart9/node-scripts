@@ -57,7 +57,7 @@ function processFile(lines, fileType, fileConfig) {
 }
 
 module.exports = {
-    main: function() {
+    main: async function() {
         console.log("QIF file generation started");
         
         let configs = new Map(Object.entries(require('./txnfile-config')));
@@ -71,46 +71,79 @@ module.exports = {
         let archiveFolder = process.env.BANK_CSV_ARCHIVE;
         let activeFolder = process.env.BANK_CSV_ACTIVE;
 
-        let outputFileMap = new Map();
-        
-        let files = JSON.parse(fs.readFileSync(path.join(activeFolder, "fileinfo.json"))).files;
+        await require('./fetch-txnfiles').fetch();
 
-        files.forEach(fileInfo => {
+        let outputFileMap = new Map();
+        let procFileInfos = [];
+        
+        let fileInfoJson = JSON.parse(fs.readFileSync(path.join(activeFolder, "fileinfo.json")));
+        let fileInfosWrite = fileInfoJson.fileInfos.slice();
+
+        fileInfoJson.fileInfos.forEach(fileInfo => {
             let fileType = fileInfo.fileType;
             let inputFileName = path.join(activeFolder, fileInfo.fileName);
 
-            let lines = fs
-                .readFileSync(inputFileName, 'utf-8')
-                .split('\n');
+            try {
+                if (!fileType)
+                    throw new Error(`Input file ${inputFileName} has an undefined file type.  File is being skipped.  Update fileinfo.json appropriately.`);
 
-            let inputConfig = inputConfigs.get(fileType);
-            let outputType = inputConfig.outputType;
-            let outputConfig = outputConfigs.get(outputType);
-            let qifType = outputConfig.qifType;
+                let lines = fs
+                    .readFileSync(inputFileName, 'utf-8')
+                    .split('\n');
 
-            if (!outputFileMap.has(outputType)) {
-                outputFileMap.set(outputType, { "text": `!Type:${qifType}\n` });
+                let inputConfig = inputConfigs.get(fileType);
+                if (!inputConfig) 
+                    throw new Error(`Input file ${inputFileName} has an invalid file type of ${fileType}.  File is being skipped.  Update fileinfo.json or txnfile-config.json appropriately.`);
+
+                let outputType = inputConfig.outputType;
+                let outputConfig = outputConfigs.get(outputType);
+                if (!outputConfig) 
+                    throw new Error(`Output file type of ${outputType} is invalid.  File is being skipped.  Update txnfile-config.json appropriately.`);
+
+                let qifType = outputConfig.qifType;
+
+                if (!outputFileMap.has(outputType)) {
+                    outputFileMap.set(outputType, { "text": `!Type:${qifType}\n` });
+                }
+
+                outputFileMap.get(outputType).text += processFile(lines, fileType, inputConfig);
+
+                procFileInfos.push({
+                    fileName: fileInfo.fileName
+                });
+
+                console.log(`Input file ${inputFileName} processed.`);
             }
-
-            outputFileMap.get(outputType).text += processFile(lines, fileType, inputConfig);
+            catch (err) {
+                console.log('\x1b[1m%s\x1b[0m', `WARNING: ${err}`)
+            }
         })
 
         outputFileMap.forEach((value, outputType) => {
             let outputPath = path.join(quickenFolder, `transactions-${outputType}.qif`);
 
             fs.writeFileSync(outputPath, value.text);
-            console.log(`QIF file generated.\nType: ${outputType}\nOutput File: ${outputPath}`);
+            console.log(`QIF file generated. Type: ${outputType} Output File: ${outputPath}`);
         })
 
-        files.forEach(fileInfo => {
+        let jsonModified = false;
+
+        procFileInfos.forEach(fileInfo => {
             let inputFileName = fileInfo.fileName;
             let pathObj = path.parse(inputFileName);
             let archiveFileName = path.join(archiveFolder, `${pathObj.name}.${(new Date()).toJSON().replace(/:/g, "")}${pathObj.ext}`);
             fs.renameSync(path.join(activeFolder, inputFileName), archiveFileName)
-            console.log(`Input file archived to ${archiveFileName}`);
+            console.log(`Input file ${inputFileName} archived to ${archiveFileName}`);
+
+            fileInfosWrite = fileInfosWrite.filter(fileInfoWrite => !(fileInfoWrite.fileName == fileInfo.fileName));
+            jsonModified = true;
         })
 
-        return "Process complete."
+        if (jsonModified) {
+            fs.writeFileSync(path.join(activeFolder, "fileinfo.json"), JSON.stringify({ fileInfos: fileInfosWrite }));
+        }
+
+        return "QIF file generation complete."
     }
 };
 require('make-runnable/custom')({
