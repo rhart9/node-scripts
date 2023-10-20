@@ -3,7 +3,8 @@ require('dotenv').config();
 module.exports = {
     fetch: async function () {
         let bucket = process.env.S3_TXNUPLOAD_BUCKET;
-        console.log(`Fetching from S3 bucket ${bucket}...`);
+        let prefix = process.env.S3_TXNUPLOAD_PREFIX
+        console.log(`Fetching from S3 bucket ${bucket}, prefix ${prefix}...`);
 
         const { 
             S3Client, 
@@ -20,72 +21,89 @@ module.exports = {
 
         let procFileInfos = [];
 
-        let listObjectsResponse = await client.send(new ListObjectsV2Command({ Bucket: bucket }));
+        if (prefix[prefix.length - 1] != '/') {
+            prefix += '/';
+        }
 
-        if (listObjectsResponse.Contents && listObjectsResponse.Contents.length > 0) {
-            await Promise.all(listObjectsResponse.Contents.map(item => new Promise(async (resolve, reject) => {
-                console.log(`Fetching file ${item.Key}`);
+        let listObjectsResponse = await client.send(new ListObjectsV2Command({ 
+            Bucket: bucket, 
+            Prefix: prefix,
+            Delimiter: '/'
+        }));
 
-                let params = {
-                    Bucket: bucket,
-                    Key: item.Key
-                };
-                try {
-                    let response = await client.send(new GetObjectCommand(params));
+        if (listObjectsResponse.Contents) {
+            let contents = listObjectsResponse.Contents.filter(item => item.Key != prefix);
 
-                    let writeStream = fs.createWriteStream(path.join(activeFolder, item.Key));
+            if (contents.length > 0) {
+                await Promise.all(contents.map(item => new Promise(async (resolve, reject) => {
+                    console.log(`Fetching file ${item.Key}`);
 
-                    response.Body.pipe(writeStream);
-                    response.Body.once('error', (error) => {
-                        writeStream.end();
+                    let params = {
+                        Bucket: bucket,
+                        Key: item.Key
+                    };
+                    try {
+                        let response = await client.send(new GetObjectCommand(params));
 
+                        let localFileName = item.Key.replace(prefix, '');
+
+                        let writeStream = fs.createWriteStream(path.join(activeFolder, localFileName));
+
+                        response.Body.pipe(writeStream);
+                        response.Body.once('error', (error) => {
+                            writeStream.end();
+
+                            console.log('\x1b[1m%s\x1b[0m', `WARNING: ${item.Key} did not download properly. Error: ${JSON.stringify(error)}. Process will continue without this file.`);
+                            resolve(); 
+                        })
+                        response.Body.once('end', async () => {
+                            procFileInfos.push({
+                                fileName: localFileName,
+                                fileType: response.Metadata.filetype
+                            });
+                            writeStream.end();
+
+                            console.log(`Fetching file ${item.Key} complete.`);
+
+                            try {
+                                await client.send(new DeleteObjectCommand(params));
+                                console.log(`File ${item.Key} deleted from S3.`);
+                            }
+                            catch (error) {
+                                console.log('\x1b[1m%s\x1b[0m', `WARNING: ${item.Key} did not delete properly. Error: ${JSON.stringify(error)}. Make sure this file is manually removed from S3.`);
+                            }
+                            resolve();
+                        });
+                    }
+                    catch (error) {
                         console.log('\x1b[1m%s\x1b[0m', `WARNING: ${item.Key} did not download properly. Error: ${JSON.stringify(error)}. Process will continue without this file.`);
                         resolve(); 
-                    })
-                    response.Body.once('end', async () => {
-                        procFileInfos.push({
-                            fileName: item.Key,
-                            fileType: response.Metadata.filetype
-                        });
-                        writeStream.end();
+                    }
+                })));
 
-                        console.log(`Fetching file ${item.Key} complete.`);
+                let fileInfoJson = JSON.parse(fs.readFileSync(path.join(activeFolder, "fileinfo.json")));
 
-                        try {
-                            await client.send(new DeleteObjectCommand(params));
-                            console.log(`File ${item.Key} deleted from S3.`);
-                        }
-                        catch (error) {
-                            console.log('\x1b[1m%s\x1b[0m', `WARNING: ${item.Key} did not delete properly. Error: ${JSON.stringify(error)}. Make sure this file is manually removed from S3.`);
-                        }
-                        resolve();
-                    });
-                }
-                catch (error) {
-                    console.log('\x1b[1m%s\x1b[0m', `WARNING: ${item.Key} did not download properly. Error: ${JSON.stringify(error)}. Process will continue without this file.`);
-                    resolve(); 
-                }
-            })));
+                procFileInfos.forEach(procFileInfo => {
+                    if (fileInfoJson.fileInfos == undefined) {
+                        fileInfoJson.fileInfos = [];
+                    }
+                    let filtered = fileInfoJson.fileInfos.filter(fileInfo => fileInfo.fileName == procFileInfo.fileName);
+                    if (filtered.length > 0) {
+                        filtered[0] = procFileInfo;
+                    }
+                    else {
+                        fileInfoJson.fileInfos.push(procFileInfo);
+                    }
+                })
 
-            let fileInfoJson = JSON.parse(fs.readFileSync(path.join(activeFolder, "fileinfo.json")));
-
-            procFileInfos.forEach(procFileInfo => {
-                if (fileInfoJson.fileInfos == undefined) {
-                    fileInfoJson.fileInfos = [];
-                }
-                let filtered = fileInfoJson.fileInfos.filter(fileInfo => fileInfo.fileName == procFileInfo.fileName);
-                if (filtered.length > 0) {
-                    filtered[0] = procFileInfo;
-                }
-                else {
-                    fileInfoJson.fileInfos.push(procFileInfo);
-                }
-            })
-
-            fs.writeFileSync(path.join(activeFolder, "fileinfo.json"), JSON.stringify(fileInfoJson));
+                fs.writeFileSync(path.join(activeFolder, "fileinfo.json"), JSON.stringify(fileInfoJson));
+            }
+            else {
+                console.log("No files found on S3.")
+            }
         }
         else {
-            console.log("No files found on S3.")
+            console.log("Folder not found on S3.")
         }
 
         console.log("Fetching from S3 complete.");
