@@ -91,7 +91,7 @@ module.exports = {
                     .readFileSync(inputFileName, 'utf-8')
                     .split('\n');
 
-                let inputConfig = inputConfigs.get(fileType);
+                let inputConfig = inputConfigs.get(fileType.toLowerCase());
                 if (!inputConfig) 
                     throw new Error(`Input file ${inputFileName} has an invalid file type of ${fileType}.  File is being skipped.  Update fileinfo.json or txnfile-config.json appropriately.`);
 
