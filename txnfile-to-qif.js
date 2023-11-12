@@ -64,7 +64,7 @@ module.exports = {
         let inputConfigs = new Map(Object.entries(configs.get("inputTypes")));
         let outputConfigs = new Map(Object.entries(configs.get("outputTypes")));
 
-        const fs = require('fs');
+        const fs = require('fs/promises');
         const path = require('path');
 
         let quickenFolder = process.env.QIF_IMPORT_FOLDER;
@@ -76,10 +76,10 @@ module.exports = {
         let outputFileMap = new Map();
         let procFileInfos = [];
         
-        let fileInfoJson = JSON.parse(fs.readFileSync(path.join(activeFolder, "fileinfo.json")));
+        let fileInfoJson = JSON.parse(await fs.readFile(path.join(activeFolder, "fileinfo.json")));
         let fileInfosWrite = fileInfoJson.fileInfos.slice();
 
-        fileInfoJson.fileInfos.forEach(fileInfo => {
+        for (fileInfo of fileInfoJson.fileInfos) {
             let fileType = fileInfo.fileType;
             let inputFileName = path.join(activeFolder, fileInfo.fileName);
 
@@ -87,8 +87,8 @@ module.exports = {
                 if (!fileType)
                     throw new Error(`Input file ${inputFileName} has an undefined file type.  File is being skipped.  Update fileinfo.json appropriately.`);
 
-                let lines = fs
-                    .readFileSync(inputFileName, 'utf-8')
+                let lines = (await fs
+                    .readFile(inputFileName, 'utf-8'))
                     .split('\n');
 
                 let inputConfig = inputConfigs.get(fileType.toLowerCase());
@@ -117,30 +117,30 @@ module.exports = {
             catch (err) {
                 console.log('\x1b[1m%s\x1b[0m', `WARNING: ${err}`)
             }
-        })
+        }
 
-        outputFileMap.forEach((value, outputType) => {
+        for (let [outputType, value] of outputFileMap) {
             let outputPath = path.join(quickenFolder, `transactions-${outputType}.qif`);
 
-            fs.writeFileSync(outputPath, value.text);
+            await fs.writeFile(outputPath, value.text);
             console.log(`QIF file generated. Type: ${outputType} Output File: ${outputPath}`);
-        })
+        }
 
         let jsonModified = false;
 
-        procFileInfos.forEach(fileInfo => {
+        for (let fileInfo of procFileInfos) {
             let inputFileName = fileInfo.fileName;
             let pathObj = path.parse(inputFileName);
             let archiveFileName = path.join(archiveFolder, `${pathObj.name}.${(new Date()).toJSON().replace(/:/g, "")}${pathObj.ext}`);
-            fs.renameSync(path.join(activeFolder, inputFileName), archiveFileName)
+            await fs.rename(path.join(activeFolder, inputFileName), archiveFileName)
             console.log(`Input file ${inputFileName} archived to ${archiveFileName}`);
 
             fileInfosWrite = fileInfosWrite.filter(fileInfoWrite => !(fileInfoWrite.fileName == fileInfo.fileName));
             jsonModified = true;
-        })
+        }
 
         if (jsonModified) {
-            fs.writeFileSync(path.join(activeFolder, "fileinfo.json"), JSON.stringify({ fileInfos: fileInfosWrite }));
+            await fs.writeFile(path.join(activeFolder, "fileinfo.json"), JSON.stringify({ fileInfos: fileInfosWrite }));
         }
 
         return "QIF file generation complete."

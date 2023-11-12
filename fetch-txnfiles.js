@@ -15,6 +15,7 @@ module.exports = {
         const client = new S3Client({});
 
         const fs = require('fs');
+        const fsPromises = require('fs/promises');
         const path = require('path');
 
         let activeFolder = process.env.BANK_CSV_ACTIVE;
@@ -81,7 +82,7 @@ module.exports = {
                     }
                 })));
 
-                let fileInfoJson = JSON.parse(fs.readFileSync(path.join(activeFolder, "fileinfo.json")));
+                let fileInfoJson = JSON.parse(await fsPromises.readFile(path.join(activeFolder, "fileinfo.json")));
 
                 procFileInfos.forEach(procFileInfo => {
                     if (fileInfoJson.fileInfos == undefined) {
@@ -96,7 +97,7 @@ module.exports = {
                     }
                 })
 
-                fs.writeFileSync(path.join(activeFolder, "fileinfo.json"), JSON.stringify(fileInfoJson));
+                await fsPromises.writeFile(path.join(activeFolder, "fileinfo.json"), JSON.stringify(fileInfoJson));
             }
             else {
                 console.log("No files found on S3.")
