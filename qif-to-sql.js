@@ -18,17 +18,6 @@ async function writeTransaction(pool, account) {
     
     _transactionsProcessed++;
 
-    /*
-    if (_reconciled) {
-        _transactionSerialNumber++;
-        _balance += parseFloat(_amount);
-    }
-
-    let str = `${_transactionSerialNumber},${_tranDate.toString()},${_description.replace(',','')},${_amount},${_balance},${_reconciled.toString()},${_tranMemo},${_checkNumber}\n`
-    
-    await writeStream.write(str);
-    */
-
     return response.recordset[0].TransactionID;
 }
 
@@ -53,12 +42,6 @@ async function writeTransactionSplit(pool, transactionID, zeroRecordID) {
         .input('Description', sql.NVarChar, _splitDescription)
         .execute('spInsertTransactionSplitFromQuicken');
 
-    /*
-    let str = `,,,,,,,,${transactionID},${_category},${_splitAmount},${_splitDescription.replace(/,/g,'')},${_random}\n`
-    
-    await writeStream.write(str);
-    */
-
     return response.recordset[0].TransactionSplitID;
 }
 
@@ -82,19 +65,23 @@ module.exports = {
         const lineByLine = require('n-readlines');
 
         await pool.request().execute('spClearAllTransactions');
+        await pool.request().execute('spExtendQuickenSwitchoverDate'); // if we're still running this script, it should be extended
+        await pool.request().execute('spExtendCategories');
 
         for (let i = 0; i < accountTypes.length; i++) {
             accountType = accountTypes[i];
 
             [_linesProcessed, _transactionsProcessed] = [0, 0]
 
-            /*
-            let writeStream = fs.createWriteStream(path.join(quickenFolder, `${accountType}-export.csv`));
-            writeStream.write("Serial,Date,Desc,Amount,Balance,Reconciled,TranMemo,CheckNum,TxnID,Cat,Amount,Desc,Random\n");
-            */
+            let liner;
 
-            let liner = new lineByLine(path.join(quickenFolder, `${accountType}-export.qif`));
-            
+            try {
+                liner = new lineByLine(path.join(quickenFolder, `${accountType}-export.qif`));
+            }
+            catch (ex) {
+                process.stdout.write(`Error opening file.  Message: ${ex.message}\n`);
+                continue;
+            }
             let line;
             let dataType, dataValue;
             
@@ -180,12 +167,17 @@ module.exports = {
                         break; 
                 }
 
-                process.stdout.write(`Type: ${accountType} Lines processed: ${++_linesProcessed}, TransactionsProcessed: ${_transactionsProcessed}\r`);
+                let elapsedTimeStr = 'unknown'
+                let elapsedSecTotal = Math.floor((Date.now() - startTime) / 1000)
+                let elapsedSecMod = elapsedSecTotal % 60
+                let elapsedSecModStr = elapsedSecMod < 10 ? `0${elapsedSecMod}` : `${elapsedSecMod}`;
+                elapsedTimeStr = `${Math.floor(elapsedSecTotal / 60)}:${elapsedSecModStr}`
+
+                process.stdout.write(`Type: ${accountType} Lines processed: ${++_linesProcessed}, Transactions processed: ${_transactionsProcessed}, Elapsed time: ${elapsedTimeStr}\r`);
 
             }
             process.stdout.write("\n");
         }
-        process.stdout.write(`Elapsed: ${(Date.now() - startTime) / 1000} sec\n`)
 
         return;
     }
