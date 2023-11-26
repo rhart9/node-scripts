@@ -1,4 +1,5 @@
 require('dotenv').config();
+const sql = require('mssql/msnodesqlv8');
 
 function qifEntry(date, amount, payee) {
     return `
@@ -9,10 +10,7 @@ P${payee}
 `.trim();
 }
 
-function processFile(lines, fileType, fileConfig) {
-    let skipFirstLine = fileConfig.skipFirstLine;
-    let reverseSign = fileConfig.reverseSign;
-
+function processFile(lines, importAlgorithm, skipFirstLine, reverseSign) {
     let text = '';
 
     lines.forEach(function (line, i) {
@@ -20,7 +18,7 @@ function processFile(lines, fileType, fileConfig) {
             let date, payee, amount;
             let skipEntry = false;
 
-            if (fileType.toLowerCase() == "citizens") {
+            if (importAlgorithm.toLowerCase() == "citizens") {
                 [, date, , payee, amount, , , ] = line.split(',').map(col => col.replace(/"/g,""));
                 
                 let dateObj = new Date(date);
@@ -28,7 +26,7 @@ function processFile(lines, fileType, fileConfig) {
 
                 payee = payee.replace(/\s+/g," ");
             }
-            else if (fileType.toLowerCase() == "citizenscc") {
+            else if (importAlgorithm.toLowerCase() == "amco") {
                 line = "\"," + line + ",\"";  // so dumb
                 
                 let reward;
@@ -59,10 +57,17 @@ function processFile(lines, fileType, fileConfig) {
 module.exports = {
     main: async function() {
         console.log("QIF file generation started");
-        
-        let configs = new Map(Object.entries(require('./txnfile-config')));
-        let inputConfigs = new Map(Object.entries(configs.get("inputTypes")));
-        let outputConfigs = new Map(Object.entries(configs.get("outputTypes")));
+
+        const config = {
+            driver: 'msnodesqlv8',
+            server: process.env.DB_SERVER, 
+            database: process.env.DB_DATABASE,
+            options: {
+                trustedConnection: true
+            }
+        };
+
+        let pool = await sql.connect(config);
 
         const fs = require('fs/promises');
         const path = require('path');
@@ -91,22 +96,23 @@ module.exports = {
                     .readFile(inputFileName, 'utf-8'))
                     .split('\n');
 
-                let inputConfig = inputConfigs.get(fileType.toLowerCase());
-                if (!inputConfig) 
-                    throw new Error(`Input file ${inputFileName} has an invalid file type of ${fileType}.  File is being skipped.  Update fileinfo.json or txnfile-config.json appropriately.`);
+                let query = "SELECT a.AccountName, a.ImportAlgorithm, a.SkipFirstLine, a.ReverseSign, qt.QIFType " +
+                            "FROM Account a " +
+                            "INNER JOIN QIFType qt ON a.QIFTypeID = qt.QIFTypeID " +
+                            "WHERE a.AWSFileType = @FileType"
 
-                let outputType = inputConfig.outputType;
-                let outputConfig = outputConfigs.get(outputType);
-                if (!outputConfig) 
-                    throw new Error(`Output file type of ${outputType} is invalid.  File is being skipped.  Update txnfile-config.json appropriately.`);
+                let response = await pool.request().input('FileType', sql.NVarChar, fileType).query(query);
+                let accountName = response.recordset[0].AccountName
+                let importAlgorithm = response.recordset[0].ImportAlgorithm
+                let skipFirstLine = response.recordset[0].SkipFirstLine
+                let reverseSign = response.recordset[0].ReverseSign
+                let qifType = response.recordset[0].QIFType
 
-                let qifType = outputConfig.qifType;
-
-                if (!outputFileMap.has(outputType)) {
-                    outputFileMap.set(outputType, { "text": `!Type:${qifType}\n` });
+                if (!outputFileMap.has(accountName)) {
+                    outputFileMap.set(accountName, { "text": `!Type:${qifType}\n` });
                 }
 
-                outputFileMap.get(outputType).text += processFile(lines, fileType, inputConfig);
+                outputFileMap.get(accountName).text += processFile(lines, importAlgorithm, skipFirstLine, reverseSign);
 
                 procFileInfos.push({
                     fileName: fileInfo.fileName
@@ -119,11 +125,11 @@ module.exports = {
             }
         }
 
-        for (let [outputType, value] of outputFileMap) {
-            let outputPath = path.join(quickenFolder, `transactions-${outputType}.qif`);
+        for (let [accountName, value] of outputFileMap) {
+            let outputPath = path.join(quickenFolder, `transactions-${accountName}.qif`);
 
             await fs.writeFile(outputPath, value.text);
-            console.log(`QIF file generated. Type: ${outputType} Output File: ${outputPath}`);
+            console.log(`QIF file generated. Account: ${accountName} Output File: ${outputPath}`);
         }
 
         let jsonModified = false;

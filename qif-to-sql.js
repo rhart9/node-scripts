@@ -7,7 +7,7 @@ let _linesProcessed = 0, _transactionsProcessed = 0
 
 async function writeTransaction(pool, account) {
     let response = await pool.request()
-        .input('AccountDescription', sql.NVarChar, account)
+        .input('AccountName', sql.NVarChar, account)
         .input('TransactionDate', sql.DateTime, _tranDate)
         .input('FriendlyDescription', sql.NVarChar, _description)
         .input('Amount', sql.Decimal(10, 2), _amount)
@@ -23,7 +23,7 @@ async function writeTransaction(pool, account) {
 
 async function writeZeroRecord(pool, account) {
     let response = await pool.request()
-        .input('AccountDescription', sql.NVarChar, account)
+        .input('AccountName', sql.NVarChar, account)
         .input('ReferenceDate', sql.DateTime, _tranDate)
         .execute('spInsertZeroRecordFromQuicken');
     
@@ -59,24 +59,26 @@ module.exports = {
         let pool = await sql.connect(config);
         let path = require('path');
         let quickenFolder = process.env.QIF_EXPORT_FOLDER;
-        let accountTypes = ['citizens', 'citizenscc']
         let startTime = Date.now();
 
         const lineByLine = require('n-readlines');
+
+        response = await pool.request().query("SELECT AccountName FROM Account");
+        let accountTypes = response.recordset.map(a => a.AccountName)
 
         await pool.request().execute('spClearAllTransactions');
         await pool.request().execute('spExtendQuickenSwitchoverDate'); // if we're still running this script, it should be extended
         await pool.request().execute('spExtendCategories');
 
         for (let i = 0; i < accountTypes.length; i++) {
-            accountType = accountTypes[i];
+            let accountType = accountTypes[i];
 
             [_linesProcessed, _transactionsProcessed] = [0, 0]
 
             let liner;
 
             try {
-                liner = new lineByLine(path.join(quickenFolder, `${accountType}-export.qif`));
+                liner = new lineByLine(path.join(quickenFolder, `${accountType.replace(" ", "")}-export.qif`));
             }
             catch (ex) {
                 process.stdout.write(`Error opening file.  Message: ${ex.message}\n`);
