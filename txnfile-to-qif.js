@@ -55,7 +55,7 @@ function processFile(lines, importAlgorithm, skipFirstLine, reverseSign) {
 }
 
 module.exports = {
-    main: async function() {
+    main: async function(argv) {
         console.log("QIF file generation started");
 
         const config = {
@@ -96,7 +96,7 @@ module.exports = {
                     .readFile(inputFileName, 'utf-8'))
                     .split('\n');
 
-                let query = "SELECT a.AccountName, a.ImportAlgorithm, a.SkipFirstLine, a.ReverseSign, qt.QIFType " +
+                let query = "SELECT a.AccountName, a.ImportAlgorithm, a.SkipFirstLine, a.ReverseSign, qt.QIFType, qt.AccountType " +
                             "FROM Account a " +
                             "INNER JOIN QIFType qt ON a.QIFTypeID = qt.QIFTypeID " +
                             "WHERE a.AWSFileType = @FileType"
@@ -107,9 +107,10 @@ module.exports = {
                 let skipFirstLine = response.recordset[0].SkipFirstLine
                 let reverseSign = response.recordset[0].ReverseSign
                 let qifType = response.recordset[0].QIFType
+                let accountType = response.recordset[0].AccountType
 
                 if (!outputFileMap.has(accountName)) {
-                    outputFileMap.set(accountName, { "text": `!Type:${qifType}\n` });
+                    outputFileMap.set(accountName, { "accountType": accountType, "text": `!Type:${qifType}\n` });
                 }
 
                 outputFileMap.get(accountName).text += processFile(lines, importAlgorithm, skipFirstLine, reverseSign);
@@ -125,11 +126,30 @@ module.exports = {
             }
         }
 
-        for (let [accountName, value] of outputFileMap) {
-            let outputPath = path.join(quickenFolder, `transactions-${accountName}.qif`);
+        let combinedOutputText;
 
-            await fs.writeFile(outputPath, value.text);
-            console.log(`QIF file generated. Account: ${accountName} Output File: ${outputPath}`);
+        if (argv.combineAccounts) {
+            combinedOutputText = "!Option:AutoSwitch\n";
+        }
+
+        for (let [accountName, value] of outputFileMap) {
+            if (argv.combineAccounts) {
+                combinedOutputText += `!Account\nN${accountName}\nT${value.accountType}\n^\n${value.text}\n`
+            }
+            else
+            {
+                let accountOutputPath = path.join(quickenFolder, `transactions-${accountName}.qif`);
+
+                await fs.writeFile(accountOutputPath, value.text);
+                console.log(`QIF file generated. Account: ${accountName} Output File: ${accountOutputPath}`);
+            }
+        }
+
+        if (argv.combineAccounts) {
+            let combinedOutputPath = path.join(quickenFolder, `transactions-combined.qif`);
+
+            await fs.writeFile(combinedOutputPath, combinedOutputText);
+            console.log(`Combined QIF file generated. Output File: ${combinedOutputPath}`);
         }
 
         let jsonModified = false;

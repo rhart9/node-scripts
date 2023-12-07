@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "generateQIF": "node txnfile-to-qif main",
+    "generateQIF": "node txnfile-to-qif main --combineAccounts",
     "importQIF": "node qif-to-sql main"
   },
   "dependencies": {
