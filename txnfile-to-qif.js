@@ -29,15 +29,16 @@ function processFile(lines, importAlgorithm, skipFirstLine, reverseSign) {
             else if (importAlgorithm.toLowerCase() == "amco") {
                 line = "\"," + line + ",\"";  // so dumb
                 
-                let reward;
-                [, date, , , , , , , payee, , , , , amount, reward, ] = line.split("\",\"").map(col => col.replace(/"/g,""));
+                let reward, tranStatus;
+                [, date, , , , tranStatus, , , payee, , , , , amount, reward, ] = line.split("\",\"").map(col => col.replace(/"/g,""));
                 
                 let [year, month, day] = date.split('-')
                 date = `${month}/${day}/${year}`;
 
                 amount = amount.replace("$","");
 
-                if (reward == '' && amount >= 0 && !payee.startsWith('INTEREST'))
+                //if (reward == '' && amount >= 0 && !payee.startsWith('INTEREST'))
+                if (tranStatus != "APPROVED")
                 {
                     skipEntry = true;
                 }

@@ -5,7 +5,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "generateQIF",
+            "name": "Txns to QIF",
             "request": "launch",
             "runtimeArgs": [
                 "run",
@@ -19,7 +19,7 @@
         },
 
         {
-            "name": "importQIF",
+            "name": "QIF to SQL",
             "request": "launch",
             "runtimeArgs": [
                 "run",
