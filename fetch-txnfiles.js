@@ -81,23 +81,6 @@ module.exports = {
                         resolve(); 
                     }
                 })));
-
-                let fileInfoJson = JSON.parse(await fsPromises.readFile(path.join(activeFolder, "fileinfo.json")));
-
-                procFileInfos.forEach(procFileInfo => {
-                    if (fileInfoJson.fileInfos == undefined) {
-                        fileInfoJson.fileInfos = [];
-                    }
-                    let filtered = fileInfoJson.fileInfos.filter(fileInfo => fileInfo.fileName == procFileInfo.fileName);
-                    if (filtered.length > 0) {
-                        filtered[0] = procFileInfo;
-                    }
-                    else {
-                        fileInfoJson.fileInfos.push(procFileInfo);
-                    }
-                })
-
-                await fsPromises.writeFile(path.join(activeFolder, "fileinfo.json"), JSON.stringify(fileInfoJson));
             }
             else {
                 console.log("No files found on S3.")
@@ -105,6 +88,45 @@ module.exports = {
         }
         else {
             console.log("Folder not found on S3.")
+        }
+
+        let manualDir = process.env.BANK_CSV_MANUAL_LOC
+        let subDirs = (await fsPromises.readdir(manualDir, { withFileTypes: true })).filter(entry => entry.isDirectory());
+
+        await Promise.all(subDirs.map(dir => new Promise(async (resolve, reject) => {
+            let subDirName = dir.name;
+            let files = (await fsPromises.readdir(path.join(manualDir, subDirName)))
+
+            await Promise.all(files.map(file => new Promise(async(resolve, reject) => {
+                console.log(`Manual file ${file} found in folder ${subDirName}`);
+
+                await fsPromises.rename(path.join(manualDir, subDirName, file), path.join(activeFolder, file));
+                procFileInfos.push({
+                    fileName: file,
+                    fileType: subDirName
+                });
+                resolve();
+            })));
+            resolve();
+        })));
+
+        if (procFileInfos.length > 0) {
+            let fileInfoJson = JSON.parse(await fsPromises.readFile(path.join(activeFolder, "fileinfo.json")));
+
+            procFileInfos.forEach(procFileInfo => {
+                if (fileInfoJson.fileInfos == undefined) {
+                    fileInfoJson.fileInfos = [];
+                }
+                let filtered = fileInfoJson.fileInfos.filter(fileInfo => fileInfo.fileName == procFileInfo.fileName);
+                if (filtered.length > 0) {
+                    filtered[0] = procFileInfo;
+                }
+                else {
+                    fileInfoJson.fileInfos.push(procFileInfo);
+                }
+            });
+
+            await fsPromises.writeFile(path.join(activeFolder, "fileinfo.json"), JSON.stringify(fileInfoJson));
         }
 
         console.log("Fetching from S3 complete.");

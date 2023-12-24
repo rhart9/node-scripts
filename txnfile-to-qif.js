@@ -154,11 +154,19 @@ module.exports = {
         }
 
         let jsonModified = false;
+        const archiveKeyword = ".archive";
 
         for (let fileInfo of procFileInfos) {
             let inputFileName = fileInfo.fileName;
             let pathObj = path.parse(inputFileName);
-            let archiveFileName = path.join(archiveFolder, `${pathObj.name}.${(new Date()).toJSON().replace(/:/g, "")}${pathObj.ext}`);
+
+            let fileName = pathObj.name;
+            let archiveKeywordPos = fileName.indexOf(archiveKeyword);
+            if (archiveKeywordPos > 0) {
+                fileName = fileName.substring(0, archiveKeywordPos);
+            }
+
+            let archiveFileName = path.join(archiveFolder, `${fileName}${archiveKeyword}${(new Date()).toJSON().replace(/[:-]/g, "")}${pathObj.ext}`);
             await fs.rename(path.join(activeFolder, inputFileName), archiveFileName)
             console.log(`Input file ${inputFileName} archived to ${archiveFileName}`);
 
