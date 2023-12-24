@@ -35,7 +35,7 @@ function processFile(lines, importAlgorithm, skipFirstLine, reverseSign) {
                 let [year, month, day] = date.split('-')
                 date = `${month}/${day}/${year}`;
 
-                amount = amount.replace("$","");
+                amount = amount.replace(/[\$,]/g,"")
 
                 //if (reward == '' && amount >= 0 && !payee.startsWith('INTEREST'))
                 if (tranStatus != "APPROVED")
