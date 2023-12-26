@@ -43,6 +43,27 @@ function processFile(lines, importAlgorithm, skipFirstLine, reverseSign) {
                     skipEntry = true;
                 }
             }
+            else if (importAlgorithm.toLowerCase() == "capitalone") {
+                [date, , , payee, , debit, credit] = line.split(',')
+
+                let dateObj = new Date(date);
+                date = `${dateObj.getMonth() + 1}/${dateObj.getDate()}/${dateObj.getFullYear()}`;
+
+                if (debit != "") {
+                    amount = debit * -1;
+                }
+                else if (credit != "") {
+                    amount = credit;
+                }
+
+                payee = payee.replace(/\s+/g," ");
+            }
+            else if (importAlgorithm.toLowerCase() == "discover") {
+                [date, , payee, amount, ] = line.split(',').map(col => col.replace(/"/g,""));
+            }
+            else if (importAlgorithm.toLowerCase() == "chase") {
+                [date, , payee, , , amount, ] = line.split(',')
+            }
             
             if (!skipEntry) {
                 if (reverseSign && !isNaN(amount)) amount = amount * -1;

@@ -15,7 +15,9 @@
             "skipFiles": [
                 "<node_internals>/**"
             ],
-            "type": "node"
+            "type": "node", 
+            "console": "integratedTerminal",
+            "outputCapture": "std"
         },
 
         {
