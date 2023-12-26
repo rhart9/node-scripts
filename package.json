@@ -1,7 +1,7 @@
 {
   "scripts": {
     "generateQIF": "node txnfile-to-qif main --combineAccounts",
-    "importQIF": "node qif-to-sql main"
+    "importQIF": "node qif-to-sql main --combineAccounts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.427.0",

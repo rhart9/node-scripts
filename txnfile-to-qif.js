@@ -77,6 +77,8 @@ module.exports = {
         let archiveFolder = process.env.BANK_CSV_ARCHIVE;
         let activeFolder = process.env.BANK_CSV_ACTIVE;
 
+        let combineAccounts = ((argv ?? false) && argv.combineAccounts)
+
         await require('./fetch-txnfiles').fetch();
 
         let outputFileMap = new Map();
@@ -129,12 +131,12 @@ module.exports = {
 
         let combinedOutputText;
 
-        if (argv.combineAccounts) {
+        if (combineAccounts) {
             combinedOutputText = "!Option:AutoSwitch\n";
         }
 
         for (let [accountName, value] of outputFileMap) {
-            if (argv.combineAccounts) {
+            if (combineAccounts) {
                 combinedOutputText += `!Account\nN${accountName}\nT${value.accountType}\n^\n${value.text}\n`
             }
             else
@@ -146,7 +148,7 @@ module.exports = {
             }
         }
 
-        if (argv.combineAccounts) {
+        if (combineAccounts) {
             let combinedOutputPath = path.join(quickenFolder, `transactions-combined.qif`);
 
             await fs.writeFile(combinedOutputPath, combinedOutputText);

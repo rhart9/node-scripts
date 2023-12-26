@@ -3,11 +3,11 @@ const sql = require('mssql/msnodesqlv8');
 
 let _tranDate = null, _amount = '', _reconciled = false, _description = '', _tranMemo = '', _checkNumber = '';
 let _category = '', _splitDescription = '', _splitAmount = '';
-let _linesProcessed = 0, _transactionsProcessed = 0
+let _linesProcessed = 0, _transactionsProcessed = 0, _startTime, _accountName, _accountNames, _validAccount, _progressLogged = false;
 
-async function writeTransaction(pool, account) {
+async function writeTransaction(pool) {
     let response = await pool.request()
-        .input('AccountName', sql.NVarChar, account)
+        .input('AccountName', sql.NVarChar, _accountName)
         .input('TransactionDate', sql.DateTime, _tranDate)
         .input('FriendlyDescription', sql.NVarChar, _description)
         .input('Amount', sql.Decimal(10, 2), _amount)
@@ -21,9 +21,9 @@ async function writeTransaction(pool, account) {
     return response.recordset[0].TransactionID;
 }
 
-async function writeZeroRecord(pool, account) {
+async function writeZeroRecord(pool) {
     let response = await pool.request()
-        .input('AccountName', sql.NVarChar, account)
+        .input('AccountName', sql.NVarChar, _accountName)
         .input('ReferenceDate', sql.DateTime, _tranDate)
         .execute('spInsertZeroRecordFromQuicken');
     
@@ -45,8 +45,20 @@ async function writeTransactionSplit(pool, transactionID, zeroRecordID) {
     return response.recordset[0].TransactionSplitID;
 }
 
+function resetForNewAccount(accountName) {
+    _accountName = accountName;
+    _linesProcessed = 0;
+    _transactionsProcessed = 0;
+    _startTime = Date.now();
+    _validAccount = (_accountNames.includes(accountName));
+    if (_progressLogged) {
+        process.stdout.write("\n");
+        _progressLogged = false;
+    }
+}
+
 module.exports = {
-    main: async function() {
+    main: async function(argv) {
         const config = {
             driver: 'msnodesqlv8',
             server: process.env.DB_SERVER, 
@@ -59,29 +71,42 @@ module.exports = {
         let pool = await sql.connect(config);
         let path = require('path');
         let quickenFolder = process.env.QIF_EXPORT_FOLDER;
-        let startTime = Date.now();
 
         const lineByLine = require('n-readlines');
 
         response = await pool.request().query("SELECT AccountName FROM Account");
-        let accountTypes = response.recordset.map(a => a.AccountName)
+        _accountNames = response.recordset.map(a => a.AccountName)
 
         await pool.request().execute('spClearAllTransactions');
         await pool.request().execute('spExtendQuickenSwitchoverDate'); // if we're still running this script, it should be extended
         await pool.request().execute('spExtendCategories');
 
-        for (let i = 0; i < accountTypes.length; i++) {
-            let accountType = accountTypes[i];
+        let filesToProcess;
 
-            [_linesProcessed, _transactionsProcessed] = [0, 0]
+        let combineAccounts = ((argv ?? false) && argv.combineAccounts)
+
+        if (combineAccounts) {
+            filesToProcess = [{ "accountName": null, "fileName": "all-export.qif" }];
+        }
+        else {
+            filesToProcess = _accountNames.map(accountName => ({
+                "accountName": accountName,
+                "fileName": `${accountName.replaceAll(" ", "")}-export.qif`
+            }));
+        }
+
+        for (let i = 0; i < filesToProcess.length; i++) {
+            if (!combineAccounts) {
+                resetForNewAccount(filesToProcess[i].accountName);
+            }
 
             let liner;
 
             try {
-                liner = new lineByLine(path.join(quickenFolder, `${accountType.replace(" ", "")}-export.qif`));
+                liner = new lineByLine(path.join(quickenFolder, filesToProcess[i].fileName));
             }
             catch (ex) {
-                process.stdout.write(`Error opening file.  Message: ${ex.message}\n`);
+                process.stdout.write(`Error opening file ${filesToProcess[i].fileName}.  Message: ${ex.message}\n`);
                 continue;
             }
             let line;
@@ -89,96 +114,124 @@ module.exports = {
             
             let transactionID = 0, zeroRecordID = 0;
 
+            let accountInfoMode = false;
+
             while (line = liner.next()) {
                 let lineStr = line.toString('ascii');
                 dataType = lineStr.substring(0, 1);
                 dataValue = lineStr.substring(1).replace('\r','').replace('\n','');
 
                 switch (dataType) {
+                    case '!':
+                        accountInfoMode = (dataValue == "Account");
+                        break;
                     case 'D':
-                        let delim1 = dataValue.indexOf("/");
-                        let delim2 = dataValue.indexOf("'");
+                        if (!accountInfoMode && _validAccount) {
+                            let delim1 = dataValue.indexOf("/");
+                            let delim2 = dataValue.indexOf("'");
 
-                        _tranDate = new Date(parseInt(dataValue.substring(delim2 + 1, dataValue.length)) + 2000, parseInt(dataValue.substring(0, delim1)) - 1, parseInt(dataValue.substring(delim1 + 1, delim2)));
+                            _tranDate = new Date(parseInt(dataValue.substring(delim2 + 1, dataValue.length)) + 2000, parseInt(dataValue.substring(0, delim1)) - 1, parseInt(dataValue.substring(delim1 + 1, delim2)));
+                        }
                         break;
                     case 'U':
-                        _amount = dataValue.replace(',','');
+                        if (!accountInfoMode && _validAccount) {
+                            _amount = dataValue.replaceAll(',','');
+                        }
                         break;
                     case 'T':
                         // Ignore - same value as U
                         break;
                     case 'C':
-                        if (dataValue == 'X') {
+                        if (!accountInfoMode && _validAccount && dataValue == 'X') {
                             _reconciled = true;
                         }
                         break;
                     case 'P':
-                        _description = dataValue;
+                        if (!accountInfoMode && _validAccount) {
+                            _description = dataValue;
+                        }
                         break;
                     case 'M':
-                        _tranMemo = dataValue.replace('`', '');
+                        if (!accountInfoMode && _validAccount) {
+                            _tranMemo = dataValue.replaceAll('`', '');
+                        }
                         break;
                     case 'L':
-                        _category = dataValue;
+                        if (!accountInfoMode && _validAccount) {
+                            _category = dataValue;
+                        }
                         break;
                     case 'S':
-                        if (_description == "Zero Record") {
-                            if (zeroRecordID == 0) {
-                                zeroRecordID = await writeZeroRecord(pool, accountType);
+                        if (!accountInfoMode && _validAccount) {
+                            if (_description == "Zero Record") {
+                                if (zeroRecordID == 0) {
+                                    zeroRecordID = await writeZeroRecord(pool);
+                                }
                             }
-                        }
-                        else if (transactionID == 0) {
-                            transactionID = await writeTransaction(pool, accountType);
-                        }
+                            else if (transactionID == 0) {
+                                transactionID = await writeTransaction(pool);
+                            }
 
-                        if (_splitAmount != '') {
-                            await writeTransactionSplit(pool, transactionID, zeroRecordID);
+                            if (_splitAmount != '') {
+                                await writeTransactionSplit(pool, transactionID, zeroRecordID);
 
-                            _category = '';
-                            _splitAmount = '';
-                            _splitDescription = '';
+                                _category = '';
+                                _splitAmount = '';
+                                _splitDescription = '';
+                            }
+                            _category = dataValue;
                         }
-                        _category = dataValue;
                         break;
                     case 'E':
-                        _splitDescription = dataValue;
+                        if (!accountInfoMode && _validAccount) {
+                            _splitDescription = dataValue;
+                        }
                         break;
                     case '$':
-                        _splitAmount = dataValue.replace(',','');
+                        if (!accountInfoMode && _validAccount) {
+                            _splitAmount = dataValue.replaceAll(',','');
+                        }
                         break;
                     case 'N':
-                        _checkNumber = dataValue.replace('`','');
+                        if (accountInfoMode) {
+                            resetForNewAccount(dataValue);
+                        }
+                        else if (_validAccount) {
+                            _checkNumber = dataValue.replaceAll('`','');
+                        }
                         break;
                     case '^':
-                        if (_description == "Zero Record") {
-                            if (zeroRecordID == 0) {
-                                zeroRecordID = await writeZeroRecord(pool, accountType);
+                        if (!accountInfoMode && _validAccount) {
+                            if (_description == "Zero Record") {
+                                if (zeroRecordID == 0) {
+                                    zeroRecordID = await writeZeroRecord(pool);
+                                    _splitAmount = _amount;
+                                }
+                            }
+                            else if (transactionID == 0) {
+                                transactionID = await writeTransaction(pool);
                                 _splitAmount = _amount;
                             }
-                        }
-                        else if (transactionID == 0) {
-                            transactionID = await writeTransaction(pool, accountType);
-                            _splitAmount = _amount;
-                        }
 
-                        await writeTransactionSplit(pool, transactionID, zeroRecordID);
-                        
-                        [_tranDate, _amount, _reconciled, _description, _tranMemo, _checkNumber, _category, _splitDescription, _splitAmount, transactionID, zeroRecordID] =
-                            [null, '', false, '', '', '', '', '', '', 0, 0];
-
+                            await writeTransactionSplit(pool, transactionID, zeroRecordID);
+                            
+                            [_tranDate, _amount, _reconciled, _description, _tranMemo, _checkNumber, _category, _splitDescription, _splitAmount, transactionID, zeroRecordID] =
+                                [null, '', false, '', '', '', '', '', '', 0, 0];
+                        }
                         break; 
                 }
 
-                let elapsedTimeStr = 'unknown'
-                let elapsedSecTotal = Math.floor((Date.now() - startTime) / 1000)
-                let elapsedSecMod = elapsedSecTotal % 60
-                let elapsedSecModStr = elapsedSecMod < 10 ? `0${elapsedSecMod}` : `${elapsedSecMod}`;
-                elapsedTimeStr = `${Math.floor(elapsedSecTotal / 60)}:${elapsedSecModStr}`
-
-                process.stdout.write(`Type: ${accountType} Lines processed: ${++_linesProcessed}, Transactions processed: ${_transactionsProcessed}, Elapsed time: ${elapsedTimeStr}\r`);
-
+                if (!accountInfoMode && _validAccount) {
+                    let elapsedTimeStr = 'unknown'
+                    let elapsedSecTotal = Math.floor((Date.now() - _startTime) / 1000)
+                    let elapsedSecMod = elapsedSecTotal % 60
+                    let elapsedSecModStr = elapsedSecMod < 10 ? `0${elapsedSecMod}` : `${elapsedSecMod}`;
+                    elapsedTimeStr = `${Math.floor(elapsedSecTotal / 60)}:${elapsedSecModStr}`
+                    
+                    process.stdout.write(`Account: ${_accountName}, Lines processed: ${++_linesProcessed}, Transactions processed: ${_transactionsProcessed}, Elapsed time: ${elapsedTimeStr}, ${ `${elapsedSecTotal == 0 ? "---" : (Math.round(_transactionsProcessed / elapsedSecTotal * 10) / 10).toFixed(1)}`.padStart(5) } txn/s\r`);
+                    _progressLogged = true;
+                }
             }
-            process.stdout.write("\n");
         }
 
         return;
