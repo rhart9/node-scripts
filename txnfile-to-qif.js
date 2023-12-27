@@ -1,5 +1,6 @@
 require('dotenv').config();
 const sql = require('mssql/msnodesqlv8');
+const csv = require("csv-parse/sync")
 
 function qifEntry(date, amount, payee) {
     return `
@@ -14,62 +15,53 @@ function processFile(lines, importAlgorithm, skipFirstLine, reverseSign) {
     let text = '';
 
     lines.forEach(function (line, i) {
-        if (line.length > 0 && (!skipFirstLine || i > 0)) {
-            let date, payee, amount;
-            let skipEntry = false;
+        let date, payee, amount;
+        let skipEntry = false;
 
-            if (importAlgorithm.toLowerCase() == "citizens") {
-                [, date, , payee, amount, , , ] = line.split(',').map(col => col.replace(/"/g,""));
-                
-                let dateObj = new Date(date);
-                date = `${dateObj.getMonth() + 1}/${dateObj.getDate()}/${dateObj.getFullYear()}`;
+        if (importAlgorithm.toLowerCase() == "citizens") {
+            date = new Date(line["Date"]);
+            payee = line["Description"];
+            amount = line["Amount"];
+        }
+        else if (importAlgorithm.toLowerCase() == "amco") {
+            date = new Date(line["Posted Date"]);
+            payee = line["Merchant Name"];
+            amount = line["Amount"].replace(/[\$,]/g,"");
 
-                payee = payee.replace(/\s+/g," ");
+            if (line["Status"] != "APPROVED") 
+            {
+                skipEntry = true;
             }
-            else if (importAlgorithm.toLowerCase() == "amco") {
-                line = "\"," + line + ",\"";  // so dumb
-                
-                let reward, tranStatus;
-                [, date, , , , tranStatus, , , payee, , , , , amount, reward, ] = line.split("\",\"").map(col => col.replace(/"/g,""));
-                
-                let [year, month, day] = date.split('-')
-                date = `${month}/${day}/${year}`;
-
-                amount = amount.replace(/[\$,]/g,"")
-
-                //if (reward == '' && amount >= 0 && !payee.startsWith('INTEREST'))
-                if (tranStatus != "APPROVED")
-                {
-                    skipEntry = true;
-                }
+        }
+        else if (importAlgorithm.toLowerCase() == "capitalone") {
+            date = new Date(line["Posted Date"]);
+            payee = line["Description"];
+            if (line["Debit"] != "") {
+                amount = line["Debit"] * -1;
             }
-            else if (importAlgorithm.toLowerCase() == "capitalone") {
-                [date, , , payee, , debit, credit] = line.split(',')
-
-                let dateObj = new Date(date);
-                date = `${dateObj.getMonth() + 1}/${dateObj.getDate()}/${dateObj.getFullYear()}`;
-
-                if (debit != "") {
-                    amount = debit * -1;
-                }
-                else if (credit != "") {
-                    amount = credit;
-                }
-
-                payee = payee.replace(/\s+/g," ");
+            else if (line["Credit"] != "") {
+                amount = line["Credit"];
             }
-            else if (importAlgorithm.toLowerCase() == "discover") {
-                [date, , payee, amount, ] = line.split(',').map(col => col.replace(/"/g,""));
-            }
-            else if (importAlgorithm.toLowerCase() == "chase") {
-                [date, , payee, , , amount, ] = line.split(',')
-            }
-            
-            if (!skipEntry) {
-                if (reverseSign && !isNaN(amount)) amount = amount * -1;
+        }
+        else if (importAlgorithm.toLowerCase() == "discover") {
+            date = new Date(line["Post Date"]);
+            payee = line["Description"];
+            amount = line["Amount"];
+        }
+        else if (importAlgorithm.toLowerCase() == "chase") {
+            date = new Date(line["Post Date"]);
+            payee = line["Description"];
+            amount = line["Amount"];
+        }
+        
+        if (!skipEntry) {
+            payee = payee.replace(/\s+/g," ");
 
-                text += qifEntry(date, amount, payee) + '\n';
-            }
+            if (reverseSign && !isNaN(amount)) amount = amount * -1;
+
+            let dateStr = `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
+
+            text += qifEntry(dateStr, amount, payee) + '\n';
         }
     });
 
@@ -116,9 +108,11 @@ module.exports = {
                 if (!fileType)
                     throw new Error(`Input file ${inputFileName} has an undefined file type.  File is being skipped.  Update fileinfo.json appropriately.`);
 
-                let lines = (await fs
+                /*let lines = (await fs
                     .readFile(inputFileName, 'utf-8'))
                     .split('\n');
+
+                let file = (await fs.readFile(inputFileName, 'utf-8'))*/
 
                 let query = "SELECT a.AccountName, a.ImportAlgorithm, a.SkipFirstLine, a.ReverseSign, qt.QIFType, qt.AccountType " +
                             "FROM Account a " +
@@ -132,6 +126,13 @@ module.exports = {
                 let reverseSign = response.recordset[0].ReverseSign
                 let qifType = response.recordset[0].QIFType
                 let accountType = response.recordset[0].AccountType
+
+                let fileData = (await fs.readFile(inputFileName, 'utf-8'));
+                let lines = csv.parse(fileData, {
+                    columns: true,
+                    skip_empty_lines: true,
+                    bom: true
+                  });
 
                 if (!outputFileMap.has(accountName)) {
                     outputFileMap.set(accountName, { "accountType": accountType, "text": `!Type:${qifType}\n` });
