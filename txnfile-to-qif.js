@@ -11,7 +11,7 @@ P${payee}
 `.trim();
 }
 
-function processFile(lines, importAlgorithm, skipFirstLine, reverseSign) {
+function processFile(lines, importAlgorithm, reverseSign) {
     let text = '';
 
     lines.forEach(function (line, i) {
@@ -28,7 +28,7 @@ function processFile(lines, importAlgorithm, skipFirstLine, reverseSign) {
             payee = line["Merchant Name"];
             amount = line["Amount"].replace(/[\$,]/g,"");
 
-            if (line["Status"] != "APPROVED") 
+            if (line["Activity Status"] != "APPROVED") 
             {
                 skipEntry = true;
             }
@@ -59,7 +59,7 @@ function processFile(lines, importAlgorithm, skipFirstLine, reverseSign) {
 
             if (reverseSign && !isNaN(amount)) amount = amount * -1;
 
-            let dateStr = `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
+            let dateStr = date.toLocaleDateString("en-us", { timeZone: "UTC" });
 
             text += qifEntry(dateStr, amount, payee) + '\n';
         }
@@ -107,12 +107,6 @@ module.exports = {
             try {
                 if (!fileType)
                     throw new Error(`Input file ${inputFileName} has an undefined file type.  File is being skipped.  Update fileinfo.json appropriately.`);
-
-                /*let lines = (await fs
-                    .readFile(inputFileName, 'utf-8'))
-                    .split('\n');
-
-                let file = (await fs.readFile(inputFileName, 'utf-8'))*/
 
                 let query = "SELECT a.AccountName, a.ImportAlgorithm, a.SkipFirstLine, a.ReverseSign, qt.QIFType, qt.AccountType " +
                             "FROM Account a " +
