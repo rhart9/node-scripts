@@ -121,9 +121,16 @@ module.exports = {
                 let qifType = response.recordset[0].QIFType
                 let accountType = response.recordset[0].AccountType
 
+                let columnOption = true;
+                if (!skipFirstLine) {
+                    // not implemented until necessary
+                    // columnOption needs to be an array of the column names generated manually somehow (presumably from the db)
+                    // see https://csv.js.org/parse/options/columns/
+                }
+
                 let fileData = (await fs.readFile(inputFileName, 'utf-8'));
                 let lines = csv.parse(fileData, {
-                    columns: true,
+                    columns: columnOption,
                     skip_empty_lines: true,
                     bom: true
                   });
@@ -132,7 +139,7 @@ module.exports = {
                     outputFileMap.set(accountName, { "accountType": accountType, "text": `!Type:${qifType}\n` });
                 }
 
-                outputFileMap.get(accountName).text += processFile(lines, importAlgorithm, skipFirstLine, reverseSign);
+                outputFileMap.get(accountName).text += processFile(lines, importAlgorithm, reverseSign);
 
                 procFileInfos.push({
                     fileName: fileInfo.fileName
