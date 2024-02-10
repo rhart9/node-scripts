@@ -1,7 +1,7 @@
 require('dotenv').config();
 const sql = require('mssql/msnodesqlv8');
 
-let _tranDate = null, _amount = '', _reconciled = false, _description = '', _tranMemo = '', _checkNumber = '';
+let _tranDate = null, _amount = '', _reconciled = false, _cleared = false, _description = '', _tranMemo = '', _checkNumber = '';
 let _category = '', _splitDescription = '', _splitAmount = '';
 let _linesProcessed = 0, _transactionsProcessed = 0, _startTime, _accountName, _accountNames, _validAccount, _progressLogged = false;
 
@@ -12,6 +12,7 @@ async function writeTransaction(pool) {
         .input('FriendlyDescription', sql.NVarChar, _description)
         .input('Amount', sql.Decimal(10, 2), _amount)
         .input('Reconciled', sql.Bit, _reconciled)
+        .input('Cleared', sql.Bit, _cleared)
         .input('QuickenCheckNumber', sql.NVarChar, _checkNumber)
         .input('QuickenMemo', sql.NVarChar, _tranMemo)
         .execute('spInsertTransactionFromQuicken');
@@ -142,8 +143,13 @@ module.exports = {
                         // Ignore - same value as U
                         break;
                     case 'C':
-                        if (!accountInfoMode && _validAccount && dataValue == 'X') {
-                            _reconciled = true;
+                        if (!accountInfoMode && _validAccount) {
+                            if (dataValue == 'X') {
+                                _reconciled = true;
+                            }
+                            else if (dataValue == '*') {
+                                _cleared = true;
+                            }
                         }
                         break;
                     case 'P':
@@ -215,8 +221,8 @@ module.exports = {
 
                             await writeTransactionSplit(pool, transactionID, zeroRecordID);
                             
-                            [_tranDate, _amount, _reconciled, _description, _tranMemo, _checkNumber, _category, _splitDescription, _splitAmount, transactionID, zeroRecordID] =
-                                [null, '', false, '', '', '', '', '', '', 0, 0];
+                            [_tranDate, _amount, _reconciled, _cleared, _description, _tranMemo, _checkNumber, _category, _splitDescription, _splitAmount, transactionID, zeroRecordID] =
+                                [null, '', false, false, '', '', '', '', '', '', 0, 0];
                         }
                         break; 
                 }
