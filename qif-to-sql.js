@@ -122,53 +122,43 @@ module.exports = {
                 dataType = lineStr.substring(0, 1);
                 dataValue = lineStr.substring(1).replace('\r','').replace('\n','');
 
-                switch (dataType) {
-                    case '!':
-                        accountInfoMode = (dataValue == "Account");
-                        break;
-                    case 'D':
-                        if (!accountInfoMode && _validAccount) {
+                let validAccountContentMode = (!accountInfoMode && _validAccount);
+
+                if (validAccountContentMode) {
+                    switch (dataType) {
+                        case '!':
+                            accountInfoMode = (dataValue == "Account");
+                            break;
+                        case 'D':
                             let delim1 = dataValue.indexOf("/");
                             let delim2 = dataValue.indexOf("'");
 
                             _tranDate = new Date(parseInt(dataValue.substring(delim2 + 1, dataValue.length)) + 2000, parseInt(dataValue.substring(0, delim1)) - 1, parseInt(dataValue.substring(delim1 + 1, delim2)));
-                        }
-                        break;
-                    case 'U':
-                        if (!accountInfoMode && _validAccount) {
+                            break;
+                        case 'U':
                             _amount = dataValue.replaceAll(',','');
-                        }
-                        break;
-                    case 'T':
-                        // Ignore - same value as U
-                        break;
-                    case 'C':
-                        if (!accountInfoMode && _validAccount) {
+                            break;
+                        case 'T':
+                            // Ignore - same value as U
+                            break;
+                        case 'C':
                             if (dataValue == 'X') {
                                 _reconciled = true;
                             }
                             else if (dataValue == '*') {
                                 _cleared = true;
                             }
-                        }
-                        break;
-                    case 'P':
-                        if (!accountInfoMode && _validAccount) {
+                            break;
+                        case 'P':
                             _description = dataValue;
-                        }
-                        break;
-                    case 'M':
-                        if (!accountInfoMode && _validAccount) {
+                            break;
+                        case 'M':
                             _tranMemo = dataValue.replaceAll('`', '');
-                        }
-                        break;
-                    case 'L':
-                        if (!accountInfoMode && _validAccount) {
+                            break;
+                        case 'L':
                             _category = dataValue;
-                        }
-                        break;
-                    case 'S':
-                        if (!accountInfoMode && _validAccount) {
+                            break;
+                        case 'S':
                             if (_description == "Zero Record") {
                                 if (zeroRecordID == 0) {
                                     zeroRecordID = await writeZeroRecord(pool);
@@ -186,28 +176,17 @@ module.exports = {
                                 _splitDescription = '';
                             }
                             _category = dataValue;
-                        }
-                        break;
-                    case 'E':
-                        if (!accountInfoMode && _validAccount) {
+                            break;
+                        case 'E':
                             _splitDescription = dataValue;
-                        }
-                        break;
-                    case '$':
-                        if (!accountInfoMode && _validAccount) {
+                            break;
+                        case '$':
                             _splitAmount = dataValue.replaceAll(',','');
-                        }
-                        break;
-                    case 'N':
-                        if (accountInfoMode) {
-                            resetForNewAccount(dataValue);
-                        }
-                        else if (_validAccount) {
+                            break;
+                        case 'N':
                             _checkNumber = dataValue.replaceAll('`','');
-                        }
-                        break;
-                    case '^':
-                        if (!accountInfoMode && _validAccount) {
+                            break;
+                        case '^':
                             if (_description == "Zero Record") {
                                 if (zeroRecordID == 0) {
                                     zeroRecordID = await writeZeroRecord(pool);
@@ -223,11 +202,9 @@ module.exports = {
                             
                             [_tranDate, _amount, _reconciled, _cleared, _description, _tranMemo, _checkNumber, _category, _splitDescription, _splitAmount, transactionID, zeroRecordID] =
                                 [null, '', false, false, '', '', '', '', '', '', 0, 0];
-                        }
                         break; 
-                }
+                    }
 
-                if (!accountInfoMode && _validAccount) {
                     let elapsedTimeStr = 'unknown'
                     let elapsedSecTotal = Math.floor((Date.now() - _startTime) / 1000)
                     let elapsedSecMod = elapsedSecTotal % 60
@@ -236,6 +213,18 @@ module.exports = {
                     
                     process.stdout.write(`Account: ${_accountName}, Lines processed: ${++_linesProcessed}, Transactions processed: ${_transactionsProcessed}, Elapsed time: ${elapsedTimeStr}, ${ `${elapsedSecTotal == 0 ? "---" : (Math.round(_transactionsProcessed / elapsedSecTotal * 10) / 10).toFixed(1)}`.padStart(5) } txn/s\r`);
                     _progressLogged = true;
+                }
+                else { // !validAccountContentMode
+                    switch (dataType) {
+                        case '!':
+                            accountInfoMode = (dataValue == "Account");
+                            break;
+                        case 'N':
+                            if (accountInfoMode) {
+                                resetForNewAccount(dataValue);
+                            }
+                            break;
+                    }
                 }
             }
         }
