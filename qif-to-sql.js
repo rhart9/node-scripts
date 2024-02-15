@@ -5,45 +5,67 @@ let _tranDate = null, _amount = '', _reconciled = false, _cleared = false, _desc
 let _category = '', _splitDescription = '', _splitAmount = '';
 let _linesProcessed = 0, _transactionsProcessed = 0, _startTime, _accountName, _accountNames, _validAccount, _progressLogged = false;
 
-async function writeTransaction(pool) {
-    let response = await pool.request()
-        .input('AccountName', sql.NVarChar, _accountName)
-        .input('TransactionDate', sql.DateTime, _tranDate)
-        .input('FriendlyDescription', sql.NVarChar, _description)
-        .input('Amount', sql.Decimal(10, 2), _amount)
-        .input('Reconciled', sql.Bit, _reconciled)
-        .input('Cleared', sql.Bit, _cleared)
-        .input('QuickenCheckNumber', sql.NVarChar, _checkNumber)
-        .input('QuickenMemo', sql.NVarChar, _tranMemo)
-        .execute('spInsertTransactionFromQuicken');
-    
-    _transactionsProcessed++;
+let _bcp, _transactionIDSequence = 0, _zeroRecordIDSequence = 0
 
-    return response.recordset[0].TransactionID;
+async function writeTransaction(pool) {
+    if (_bcp) {
+        let transactionID = ++_transactionIDSequence;
+
+        return transactionID;
+    }
+    else {
+        let response = await pool.request()
+            .input('AccountName', sql.NVarChar, _accountName)
+            .input('TransactionDate', sql.DateTime, _tranDate)
+            .input('FriendlyDescription', sql.NVarChar, _description)
+            .input('Amount', sql.Decimal(10, 2), _amount)
+            .input('Reconciled', sql.Bit, _reconciled)
+            .input('Cleared', sql.Bit, _cleared)
+            .input('QuickenCheckNumber', sql.NVarChar, _checkNumber)
+            .input('QuickenMemo', sql.NVarChar, _tranMemo)
+            .execute('spInsertTransactionFromQuicken');
+        
+        _transactionsProcessed++;
+
+        return response.recordset[0].TransactionID;
+    }
 }
 
 async function writeZeroRecord(pool) {
-    let response = await pool.request()
-        .input('AccountName', sql.NVarChar, _accountName)
-        .input('ReferenceDate', sql.DateTime, _tranDate)
-        .execute('spInsertZeroRecordFromQuicken');
-    
-    _transactionsProcessed++;
+    if (_bcp) {
+        let zeroRecordID = ++_zeroRecordIDSequence;
 
-    return response.recordset[0].ZeroRecordID;
+        return zeroRecordID;
+    }
+    else {
+        let response = await pool.request()
+            .input('AccountName', sql.NVarChar, _accountName)
+            .input('ReferenceDate', sql.DateTime, _tranDate)
+            .execute('spInsertZeroRecordFromQuicken');
+        
+        _transactionsProcessed++;
+
+        return response.recordset[0].ZeroRecordID;
+    }
 }
 
 async function writeTransactionSplit(pool, transactionID, zeroRecordID) {
-    let response = await pool.request()
-        .input('TransactionID', sql.Int, transactionID)
-        .input('ZeroRecordID', sql.Int, zeroRecordID)
-        .input('CategoryName', sql.NVarChar, _category)
-        .input('Amount', sql.Decimal(10, 2), _splitAmount)
-        .input('ReferenceDate', sql.Date, _tranDate)
-        .input('Description', sql.NVarChar, _splitDescription)
-        .execute('spInsertTransactionSplitFromQuicken');
+    if (_bcp) {
 
-    return response.recordset[0].TransactionSplitID;
+        return null;
+    }
+    else {
+        let response = await pool.request()
+            .input('TransactionID', sql.Int, transactionID)
+            .input('ZeroRecordID', sql.Int, zeroRecordID)
+            .input('CategoryName', sql.NVarChar, _category)
+            .input('Amount', sql.Decimal(10, 2), _splitAmount)
+            .input('ReferenceDate', sql.Date, _tranDate)
+            .input('Description', sql.NVarChar, _splitDescription)
+            .execute('spInsertTransactionSplitFromQuicken');
+
+        return response.recordset[0].TransactionSplitID;
+    }
 }
 
 function resetForNewAccount(accountName) {
@@ -78,7 +100,11 @@ module.exports = {
         response = await pool.request().query("SELECT AccountName FROM Account");
         _accountNames = response.recordset.map(a => a.AccountName)
 
-        await pool.request().execute('spClearAllTransactions');
+        _bcp = ((argv ?? false) && argv.bcp)
+
+        if (!_bcp) {
+            await pool.request().execute('spClearAllTransactions');
+        }
         await pool.request().execute('spExtendQuickenSwitchoverDate'); // if we're still running this script, it should be extended
         await pool.request().execute('spExtendCategories');
 

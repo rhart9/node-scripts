@@ -19,13 +19,27 @@
             "console": "integratedTerminal",
             "outputCapture": "std"
         },
-
         {
             "name": "QIF to SQL",
             "request": "launch",
             "runtimeArgs": [
                 "run",
                 "qif-to-sql"
+            ],
+            "runtimeExecutable": "npm",
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "type": "node", 
+            "console": "integratedTerminal",
+            "outputCapture": "std"
+        },
+        {
+            "name": "QIF to SQL BCP",
+            "request": "launch",
+            "runtimeArgs": [
+                "run",
+                "qif-to-sql-bcp"
             ],
             "runtimeExecutable": "npm",
             "skipFiles": [

@@ -1,7 +1,8 @@
 {
   "scripts": {
     "txnfile-to-qif": "node txnfile-to-qif main --combineAccounts",
-    "qif-to-sql": "node qif-to-sql main --combineAccounts"
+    "qif-to-sql": "node qif-to-sql main --combineAccounts",
+    "qif-to-sql-bcp": "node qif-to-sql main --combineAccounts --bcp"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.427.0",
