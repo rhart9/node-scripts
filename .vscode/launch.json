@@ -9,7 +9,7 @@
             "request": "launch",
             "runtimeArgs": [
                 "run",
-                "generateQIF"
+                "txnfile-to-qif"
             ],
             "runtimeExecutable": "npm",
             "skipFiles": [
@@ -25,7 +25,7 @@
             "request": "launch",
             "runtimeArgs": [
                 "run",
-                "importQIF"
+                "qif-to-sql"
             ],
             "runtimeExecutable": "npm",
             "skipFiles": [
