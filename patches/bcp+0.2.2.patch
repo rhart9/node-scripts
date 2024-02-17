@@ -1,0 +1,19 @@
+diff --git a/node_modules/bcp/lib/Bcp.js b/node_modules/bcp/lib/Bcp.js
+index 16d5c09..f5e1650 100644
+--- a/node_modules/bcp/lib/Bcp.js
++++ b/node_modules/bcp/lib/Bcp.js
+@@ -1,4 +1,4 @@
+-"use strict";
++﻿"use strict";
+ /* -------------------------------------------------------------------
+  * Require Statements << Keep in alphabetical order >>
+  * ---------------------------------------------------------------- */
+@@ -922,7 +922,7 @@ function getCommonArgs (bcp, omitFormat)
+ 	if (bcp.server)
+ 	{
+ 		args.push('-S');
+-		args.push(JSON.stringify(String(bcp.server)));
++		args.push(JSON.stringify(String(bcp.server)).replace("\\\\", "\\"));
+ 	}
+ 
+ 	if (bcp.fieldTerminator && !omitFormat)

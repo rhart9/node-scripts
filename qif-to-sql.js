@@ -5,11 +5,24 @@ let _tranDate = null, _amount = '', _reconciled = false, _cleared = false, _desc
 let _category = '', _splitDescription = '', _splitAmount = '';
 let _linesProcessed = 0, _transactionsProcessed = 0, _startTime, _accountName, _accountNames, _validAccount, _progressLogged = false;
 
-let _bcp, _transactionIDSequence = 0, _zeroRecordIDSequence = 0
+let _bcp, _transactionIDSequence = 0, _zeroRecordIDSequence = 0;
+let _bcpTransactions = [], _bcpZeroRecords = [], _bcpTransactionSplits = [];
 
 async function writeTransaction(pool) {
     if (_bcp) {
         let transactionID = ++_transactionIDSequence;
+
+        _bcpTransactions.push({
+            ImportedTransactionID: transactionID,
+            AccountName: _accountName,
+            TransactionDate: _tranDate,
+            FriendlyDescription: _description,
+            Amount: _amount,
+            Reconciled: _reconciled,
+            Cleared: _cleared,
+            QuickenCheckNumber: _checkNumber,
+            QuickenMemo: _tranMemo
+        });
 
         return transactionID;
     }
@@ -35,6 +48,12 @@ async function writeZeroRecord(pool) {
     if (_bcp) {
         let zeroRecordID = ++_zeroRecordIDSequence;
 
+        _bcpZeroRecords.push({
+            ImportedZeroRecordID: zeroRecordID,
+            AccountName: _accountName,
+            ReferenceDate: _tranDate
+        });
+
         return zeroRecordID;
     }
     else {
@@ -51,6 +70,15 @@ async function writeZeroRecord(pool) {
 
 async function writeTransactionSplit(pool, transactionID, zeroRecordID) {
     if (_bcp) {
+
+        _bcpTransactionSplits.push({
+            ImportedTransactionID: transactionID,
+            ImportedZeroRecordID: zeroRecordID,
+            CategoryName: _category,
+            Amount: _splitAmount,
+            ReferenceDate: _tranDate,
+            Description: _splitDescription
+        })
 
         return null;
     }
@@ -74,7 +102,7 @@ function resetForNewAccount(accountName) {
     _transactionsProcessed = 0;
     _startTime = Date.now();
     _validAccount = (_accountNames.includes(accountName));
-    if (_progressLogged) {
+    if (!_bcp && _progressLogged) {
         process.stdout.write("\n");
         _progressLogged = false;
     }
@@ -102,7 +130,10 @@ module.exports = {
 
         _bcp = ((argv ?? false) && argv.bcp)
 
-        if (!_bcp) {
+        if (_bcp) {
+            await pool.request().execute('spClearQuickenStagingTables');
+        }
+        else {
             await pool.request().execute('spClearAllTransactions');
         }
         await pool.request().execute('spExtendQuickenSwitchoverDate'); // if we're still running this script, it should be extended
@@ -231,14 +262,16 @@ module.exports = {
                         break; 
                     }
 
-                    let elapsedTimeStr = 'unknown'
-                    let elapsedSecTotal = Math.floor((Date.now() - _startTime) / 1000)
-                    let elapsedSecMod = elapsedSecTotal % 60
-                    let elapsedSecModStr = elapsedSecMod < 10 ? `0${elapsedSecMod}` : `${elapsedSecMod}`;
-                    elapsedTimeStr = `${Math.floor(elapsedSecTotal / 60)}:${elapsedSecModStr}`
-                    
-                    process.stdout.write(`Account: ${_accountName}, Lines processed: ${++_linesProcessed}, Transactions processed: ${_transactionsProcessed}, Elapsed time: ${elapsedTimeStr}, ${ `${elapsedSecTotal == 0 ? "---" : (Math.round(_transactionsProcessed / elapsedSecTotal * 10) / 10).toFixed(1)}`.padStart(5) } txn/s\r`);
-                    _progressLogged = true;
+                    if (!_bcp) {
+                        let elapsedTimeStr = 'unknown'
+                        let elapsedSecTotal = Math.floor((Date.now() - _startTime) / 1000)
+                        let elapsedSecMod = elapsedSecTotal % 60
+                        let elapsedSecModStr = elapsedSecMod < 10 ? `0${elapsedSecMod}` : `${elapsedSecMod}`;
+                        elapsedTimeStr = `${Math.floor(elapsedSecTotal / 60)}:${elapsedSecModStr}`
+                        
+                        process.stdout.write(`Account: ${_accountName}, Lines processed: ${++_linesProcessed}, Transactions processed: ${_transactionsProcessed}, Elapsed time: ${elapsedTimeStr}, ${ `${elapsedSecTotal == 0 ? "---" : (Math.round(_transactionsProcessed / elapsedSecTotal * 10) / 10).toFixed(1)}`.padStart(5) } txn/s\r`);
+                        _progressLogged = true;
+                    }
                 }
                 else { // !validAccountContentMode
                     switch (dataType) {
@@ -253,6 +286,54 @@ module.exports = {
                     }
                 }
             }
+        }
+
+        if (_bcp) {
+            var Bcp = require('bcp');
+
+            var bcpObject = new Bcp({
+                server: process.env.DB_SERVER, 
+                database: process.env.DB_DATABASE,
+                trusted: true,
+                fieldTerminator: '\t::\t',
+                rowTerminator: '\t::\n',
+                unicode: true,
+                checkConstraints: true
+            });
+
+            bcpObject.exec = JSON.stringify(path.join(process.env.BCP_LOCATION, bcpObject.exec));
+
+            bcpObject.loadTable = async function(tableName, tableData, resolve, reject) {
+                this.prepareBulkInsert(tableName, Object.keys(tableData[0]), function (err, imp) {
+                    if (err) {
+                        process.stdout.write(err.message);
+                        reject();
+                    }
+                    else {
+                        imp.writeRows(tableData);
+                        imp.execute(function(err) {
+                            if (err) {
+                                process.stdout.write(err.message);
+                                reject();
+                            }
+                            else {
+                                process.stdout.write(`${tableName} loaded.\r\n`)
+                                resolve();
+                            }
+                        });
+                    }
+                });
+            }
+
+            let bcpTables = [
+                { tableName: 'QuickenStagingTransaction', tableData: _bcpTransactions },
+                { tableName: 'QuickenStagingZeroRecord', tableData: _bcpZeroRecords },
+                { tableName: 'QuickenStagingTransactionSplit', tableData: _bcpTransactionSplits }
+            ];
+
+            await Promise.all(bcpTables.map(bcpTable => new Promise((resolve, reject) => bcpObject.loadTable(bcpTable.tableName, bcpTable.tableData, resolve, reject))));
+
+            await pool.request().execute('spPopulateFromQuickenStaging');
         }
 
         return;
