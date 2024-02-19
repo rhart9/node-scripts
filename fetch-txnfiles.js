@@ -3,8 +3,8 @@ require('dotenv').config();
 module.exports = {
     fetch: async function () {
         let bucket = process.env.S3_TXNUPLOAD_BUCKET;
-        let prefix = process.env.S3_TXNUPLOAD_PREFIX
-        console.log(`Fetching from S3 bucket ${bucket}, prefix ${prefix}...`);
+        let rootPrefix = process.env.S3_TXNUPLOAD_PREFIX
+        console.log(`Fetching from S3 bucket ${bucket}, prefix ${rootPrefix}...`);
 
         const { 
             S3Client, 
@@ -22,20 +22,39 @@ module.exports = {
 
         let procFileInfos = [];
 
-        if (prefix[prefix.length - 1] != '/') {
-            prefix += '/';
+        if (rootPrefix[rootPrefix.length - 1] != '/') {
+            rootPrefix += '/';
         }
 
         let listObjectsResponse = await client.send(new ListObjectsV2Command({ 
             Bucket: bucket, 
-            Prefix: prefix,
+            Prefix: rootPrefix,
             Delimiter: '/'
         }));
 
-        if (listObjectsResponse.Contents) {
-            let contents = listObjectsResponse.Contents.filter(item => item.Key != prefix);
+        let folderInfos = [{ fileType: null, contents: (listObjectsResponse.Contents ? listObjectsResponse.Contents.filter(item => item.Key != rootPrefix) : null) }]
 
-            if (contents.length > 0) {
+        if (listObjectsResponse.CommonPrefixes) {
+            let commonPrefixes = listObjectsResponse.CommonPrefixes;
+            await Promise.all(commonPrefixes.map(commonPrefix => new Promise(async (resolve, reject) => {
+                listObjectsResponse = await client.send(new ListObjectsV2Command({ 
+                    Bucket: bucket, 
+                    Prefix: commonPrefix.Prefix,
+                    Delimiter: '/'
+                }));
+                
+                let fileType = commonPrefix.Prefix.replace(rootPrefix, '').replace('/', '');
+
+                folderInfos.push({ fileType: fileType, contents: (listObjectsResponse.Contents ? listObjectsResponse.Contents.filter(item => item.Key != commonPrefix.Prefix) : null) })
+                resolve();
+            })));
+        }
+
+        await Promise.all(folderInfos.map(folderInfo => new Promise(async (resolve, reject) => {
+            let contents = folderInfo.contents;
+            let fileType = folderInfo.fileType;
+
+            if (contents && contents.length > 0) {
                 await Promise.all(contents.map(item => new Promise(async (resolve, reject) => {
                     console.log(`Fetching file ${item.Key}`);
 
@@ -46,6 +65,7 @@ module.exports = {
                     try {
                         let response = await client.send(new GetObjectCommand(params));
 
+                        let prefix = fileType ? `${rootPrefix}${fileType}/` : rootPrefix;
                         let localFileName = item.Key.replace(prefix, '');
 
                         let writeStream = fs.createWriteStream(path.join(activeFolder, localFileName));
@@ -60,7 +80,7 @@ module.exports = {
                         response.Body.once('end', async () => {
                             procFileInfos.push({
                                 fileName: localFileName,
-                                fileType: response.Metadata.filetype
+                                fileType: fileType ?? response.Metadata.filetype
                             });
                             writeStream.end();
 
@@ -82,13 +102,8 @@ module.exports = {
                     }
                 })));
             }
-            else {
-                console.log("No files found on S3.")
-            }
-        }
-        else {
-            console.log("Folder not found on S3.")
-        }
+            resolve();
+        })));
 
         let manualDir = process.env.BANK_CSV_MANUAL_LOC
         let subDirs = (await fsPromises.readdir(manualDir, { withFileTypes: true })).filter(entry => entry.isDirectory());
