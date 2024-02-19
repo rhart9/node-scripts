@@ -28,7 +28,12 @@ function processFile(lines, importAlgorithm, reverseSign) {
             payee = line["Merchant Name"];
             amount = line["Amount"].replace(/[\$,]/g,"");
 
-            if (line["Activity Status"] != "APPROVED") 
+            // if unclear, don't skip and deal with it later
+            if (line["Activity Status"] && line["Activity Status"] != "APPROVED") 
+            {
+                skipEntry = true;
+            }
+            else if (line["Status"] && line["Status"] != "APPROVED") 
             {
                 skipEntry = true;
             }
