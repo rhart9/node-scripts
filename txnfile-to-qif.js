@@ -91,7 +91,7 @@ module.exports = {
         const fs = require('fs/promises');
         const path = require('path');
 
-        let quickenFolder = process.env.QIF_IMPORT_FOLDER;
+        let LegacyFolder = process.env.QIF_IMPORT_FOLDER;
         let archiveFolder = process.env.BANK_CSV_ARCHIVE;
         let activeFolder = process.env.BANK_CSV_ACTIVE;
 
@@ -169,7 +169,7 @@ module.exports = {
             }
             else
             {
-                let accountOutputPath = path.join(quickenFolder, `transactions-${accountName}.qif`);
+                let accountOutputPath = path.join(LegacyFolder, `transactions-${accountName}.qif`);
 
                 await fs.writeFile(accountOutputPath, value.text);
                 console.log(`QIF file generated. Account: ${accountName} Output File: ${accountOutputPath}`);
@@ -177,7 +177,7 @@ module.exports = {
         }
 
         if (combineAccounts) {
-            let combinedOutputPath = path.join(quickenFolder, `transactions-combined.qif`);
+            let combinedOutputPath = path.join(LegacyFolder, `transactions-combined.qif`);
 
             await fs.writeFile(combinedOutputPath, combinedOutputText);
             console.log(`Combined QIF file generated. Output File: ${combinedOutputPath}`);

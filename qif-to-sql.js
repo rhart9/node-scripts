@@ -20,8 +20,8 @@ async function writeTransaction(pool) {
             Amount: _amount,
             Reconciled: _reconciled,
             Cleared: _cleared,
-            QuickenCheckNumber: _checkNumber,
-            QuickenMemo: _tranMemo
+            LegacyCheckNumber: _checkNumber,
+            LegacyMemo: _tranMemo
         });
 
         return transactionID;
@@ -34,9 +34,9 @@ async function writeTransaction(pool) {
             .input('Amount', sql.Decimal(10, 2), _amount)
             .input('Reconciled', sql.Bit, _reconciled)
             .input('Cleared', sql.Bit, _cleared)
-            .input('QuickenCheckNumber', sql.NVarChar, _checkNumber)
-            .input('QuickenMemo', sql.NVarChar, _tranMemo)
-            .execute('spInsertTransactionFromQuicken');
+            .input('LegacyCheckNumber', sql.NVarChar, _checkNumber)
+            .input('LegacyMemo', sql.NVarChar, _tranMemo)
+            .execute('spInsertTransactionFromLegacy');
         
         _transactionsProcessed++;
 
@@ -60,7 +60,7 @@ async function writeZeroRecord(pool) {
         let response = await pool.request()
             .input('AccountName', sql.NVarChar, _accountName)
             .input('ReferenceDate', sql.DateTime, _tranDate)
-            .execute('spInsertZeroRecordFromQuicken');
+            .execute('spInsertZeroRecordFromLegacy');
         
         _transactionsProcessed++;
 
@@ -90,7 +90,7 @@ async function writeTransactionSplit(pool, transactionID, zeroRecordID) {
             .input('Amount', sql.Decimal(10, 2), _splitAmount)
             .input('ReferenceDate', sql.Date, _tranDate)
             .input('Description', sql.NVarChar, _splitDescription)
-            .execute('spInsertTransactionSplitFromQuicken');
+            .execute('spInsertTransactionSplitFromLegacy');
 
         return response.recordset[0].TransactionSplitID;
     }
@@ -121,7 +121,7 @@ module.exports = {
 
         let pool = await sql.connect(config);
         let path = require('path');
-        let quickenFolder = process.env.QIF_EXPORT_FOLDER;
+        let LegacyFolder = process.env.QIF_EXPORT_FOLDER;
 
         const lineByLine = require('n-readlines');
 
@@ -131,12 +131,12 @@ module.exports = {
         _bcp = ((argv ?? false) && argv.bcp)
 
         if (_bcp) {
-            await pool.request().execute('spClearQuickenStagingTables');
+            await pool.request().execute('spClearLegacyStagingTables');
         }
         else {
             await pool.request().execute('spClearAllTransactions');
         }
-        await pool.request().execute('spExtendQuickenSwitchoverDate'); // if we're still running this script, it should be extended
+        await pool.request().execute('spExtendLegacySwitchoverDate'); // if we're still running this script, it should be extended
         await pool.request().execute('spExtendCategories');
 
         let filesToProcess;
@@ -161,7 +161,7 @@ module.exports = {
             let liner;
 
             try {
-                liner = new lineByLine(path.join(quickenFolder, filesToProcess[i].fileName));
+                liner = new lineByLine(path.join(LegacyFolder, filesToProcess[i].fileName));
             }
             catch (ex) {
                 process.stdout.write(`Error opening file ${filesToProcess[i].fileName}.  Message: ${ex.message}\n`);
@@ -326,14 +326,14 @@ module.exports = {
             }
 
             let bcpTables = [
-                { tableName: 'QuickenStagingTransaction', tableData: _bcpTransactions },
-                { tableName: 'QuickenStagingZeroRecord', tableData: _bcpZeroRecords },
-                { tableName: 'QuickenStagingTransactionSplit', tableData: _bcpTransactionSplits }
+                { tableName: 'LegacyStagingTransaction', tableData: _bcpTransactions },
+                { tableName: 'LegacyStagingZeroRecord', tableData: _bcpZeroRecords },
+                { tableName: 'LegacyStagingTransactionSplit', tableData: _bcpTransactionSplits }
             ];
 
             await Promise.all(bcpTables.map(bcpTable => new Promise((resolve, reject) => bcpObject.loadTable(bcpTable.tableName, bcpTable.tableData, resolve, reject))));
 
-            await pool.request().execute('spPopulateFromQuickenStaging');
+            await pool.request().execute('spPopulateFromLegacyStaging');
         }
 
         return;
