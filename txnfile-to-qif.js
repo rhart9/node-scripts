@@ -24,7 +24,7 @@ function processFile(lines, importAlgorithm, reverseSign) {
             amount = line["Amount"];
         }
         else if (importAlgorithm.toLowerCase() == "amco") {
-            date = new Date(line["Posted Date"]);
+            date = new Date(line["Date"]);
             payee = line["Merchant Name"];
             amount = line["Amount"].replace(/[\$,]/g,"");
 
@@ -39,7 +39,7 @@ function processFile(lines, importAlgorithm, reverseSign) {
             }
         }
         else if (importAlgorithm.toLowerCase() == "capitalone") {
-            date = new Date(line["Posted Date"]);
+            date = new Date(line["Transaction Date"]);
             payee = line["Description"];
             if (line["Debit"] != "") {
                 amount = line["Debit"] * -1;
@@ -49,12 +49,12 @@ function processFile(lines, importAlgorithm, reverseSign) {
             }
         }
         else if (importAlgorithm.toLowerCase() == "discover") {
-            date = new Date(line["Post Date"]);
+            date = new Date(line["Trans. Date"]);
             payee = line["Description"];
             amount = line["Amount"];
         }
         else if (importAlgorithm.toLowerCase() == "chase") {
-            date = new Date(line["Post Date"]);
+            date = new Date(line["Transaction Date"]);
             payee = line["Description"];
             amount = line["Amount"];
         }
