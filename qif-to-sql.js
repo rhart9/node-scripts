@@ -51,7 +51,8 @@ async function writeZeroRecord(pool) {
         _bcpZeroRecords.push({
             ImportedZeroRecordID: zeroRecordID,
             AccountName: _accountName,
-            ReferenceDate: _tranDate
+            ReferenceDate: _tranDate,
+            Reconciled: _reconciled
         });
 
         return zeroRecordID;
