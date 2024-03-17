@@ -116,7 +116,8 @@ module.exports = {
             database: process.env.DB_DATABASE,
             options: {
                 trustedConnection: true
-            }
+            },
+            requestTimeout: process.env.QUERY_TIMEOUT_SECS * 1000
         };
 
         let pool = await sql.connect(config);
