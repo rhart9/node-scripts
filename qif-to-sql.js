@@ -123,7 +123,7 @@ module.exports = {
 
         let pool = await sql.connect(config);
         let path = require('path');
-        let LegacyFolder = process.env.QIF_EXPORT_FOLDER;
+        let legacyExportFolder = process.env.QIF_EXPORT_FOLDER;
 
         const lineByLine = require('n-readlines');
 
@@ -163,7 +163,7 @@ module.exports = {
             let liner;
 
             try {
-                liner = new lineByLine(path.join(LegacyFolder, filesToProcess[i].fileName));
+                liner = new lineByLine(path.join(legacyExportFolder, filesToProcess[i].fileName));
             }
             catch (ex) {
                 process.stdout.write(`Error opening file ${filesToProcess[i].fileName}.  Message: ${ex.message}\n`);
