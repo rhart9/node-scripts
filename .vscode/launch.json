@@ -48,6 +48,21 @@
             "type": "node", 
             "console": "integratedTerminal",
             "outputCapture": "std"
+        },
+        {
+            "name": "SQL TO QIF",
+            "request": "launch",
+            "runtimeArgs": [
+                "run",
+                "sql-to-qif"
+            ],
+            "runtimeExecutable": "npm",
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "type": "node", 
+            "console": "integratedTerminal",
+            "outputCapture": "std"
         }
     ]
 }

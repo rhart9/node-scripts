@@ -1,6 +1,6 @@
 require('dotenv').config();
 const sql = require('mssql/msnodesqlv8');
-const csv = require("csv-parse/sync")
+const csv = require("csv-parse/sync");
 
 function qifEntry(date, amount, payee) {
     return `
@@ -177,7 +177,7 @@ module.exports = {
         }
 
         if (combineAccounts) {
-            let combinedOutputPath = path.join(legacyImportFolder, `transactions-combined.qif`);
+            let combinedOutputPath = path.join(legacyImportFolder, `transactions-new-allaccts.qif`);
 
             await fs.writeFile(combinedOutputPath, combinedOutputText);
             console.log(`Combined QIF file generated. Output File: ${combinedOutputPath}`);
