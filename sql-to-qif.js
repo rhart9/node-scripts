@@ -54,9 +54,10 @@ module.exports = {
             }
             let splitNum = row.SplitNum;
             let splitTotal = row.SplitTotal;
+            let splitDescription = row.SplitDescription;
 
-            if (splitTotal > 1) {
-                text += `S${category}\nE${row.SplitDescription}\n\$${row.SplitAmount}\n`
+            if (splitTotal > 1 || splitDescription != "") {
+                text += `S${category}\nE${splitDescription}\n\$${row.SplitAmount}\n`
             }
             if (splitNum == splitTotal) {
                 text += `^\n`
