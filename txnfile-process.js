@@ -95,7 +95,7 @@ async function processFile(lines, importAlgorithm, reverseSign, accountID, pool)
 
 module.exports = {
     main: async function(argv) {
-        console.log("QIF file generation started");
+        console.log("Transaction file processing started.");
 
         const config = {
             driver: 'msnodesqlv8',
@@ -247,7 +247,7 @@ module.exports = {
             await fs.writeFile(path.join(activeFolder, "fileinfo.json"), JSON.stringify({ fileInfos: fileInfosWrite }));
         }
 
-        return "QIF file generation complete."
+        return "Transaction file processing complete."
     }
 };
 require('make-runnable/custom')({
