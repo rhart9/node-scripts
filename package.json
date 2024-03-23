@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "txnfile-to-qif": "node txnfile-to-qif main --combineAccounts",
+    "txnfile-process": "node txnfile-process main --combineAccounts",
     "qif-to-sql": "node qif-to-sql main --combineAccounts",
     "qif-to-sql-bcp": "node qif-to-sql main --combineAccounts --bcp",
     "sql-to-qif": "node sql-to-qif main"

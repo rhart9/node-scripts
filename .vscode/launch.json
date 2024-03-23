@@ -9,7 +9,7 @@
             "request": "launch",
             "runtimeArgs": [
                 "run",
-                "txnfile-to-qif"
+                "txnfile-process"
             ],
             "runtimeExecutable": "npm",
             "skipFiles": [
