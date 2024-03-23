@@ -5,7 +5,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Txns to QIF",
+            "name": "Process Bank Files",
             "request": "launch",
             "runtimeArgs": [
                 "run",

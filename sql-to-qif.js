@@ -16,7 +16,8 @@ module.exports = {
 
         let pool = await sql.connect(config);
 
-        let query = "SELECT * FROM vLegacyExport ORDER BY AccountID, LegacySpinelfinRef";
+        let exportUnprocessedOnly = (process.env.EXPORT_UNPROCESSED_ONLY === 'true');
+        let query = `SELECT * FROM vLegacyExport ${exportUnprocessedOnly ? "WHERE ProcessedInLegacy = 0" : ""} ORDER BY AccountID, LegacySpinelfinRef`;
 
         let response = await pool.request().query(query);
 
@@ -33,7 +34,7 @@ module.exports = {
                 curSpinelfinRef = 0;
             }
 
-            let spinelfinRef = row.LegacySpinelfinRef
+            let spinelfinRef = row.LegacySpinelfinRef;
             let category = row.LegacyCategory;
 
             if (spinelfinRef != curSpinelfinRef) {
@@ -56,7 +57,7 @@ module.exports = {
             let splitTotal = row.SplitTotal;
             let splitDescription = row.SplitDescription;
 
-            if (splitTotal > 1 || splitDescription != "") {
+            if (row.ProcessedInLegacy == 1 && (splitTotal > 1 || splitDescription != "")) {
                 text += `S${category}\nE${splitDescription}\n\$${row.SplitAmount}\n`
             }
             if (splitNum == splitTotal) {
@@ -65,7 +66,7 @@ module.exports = {
         }
 
         let legacyImportFolder = process.env.QIF_IMPORT_FOLDER;
-        let outputPath = path.join(legacyImportFolder, `transactions-full.qif`);
+        let outputPath = path.join(legacyImportFolder, (exportUnprocessedOnly ? 'transactions-new-only.qif' : 'transactions-full.qif'));
 
         await fs.writeFile(outputPath, text);
     }

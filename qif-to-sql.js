@@ -7,7 +7,6 @@ let _linesProcessed = 0, _transactionsProcessed = 0, _startTime, _accountName, _
 
 let _bcp, _transactionIDSequence = 0, _zeroRecordIDSequence = 0;
 let _bcpTransactions = [], _bcpZeroRecords = [], _bcpTransactionSplits = [];
-let _importSpinelfinRefs = false;
 
 async function writeTransaction(pool) {
     if (_bcp) {
@@ -21,9 +20,8 @@ async function writeTransaction(pool) {
             Amount: _amount,
             Reconciled: _reconciled,
             Cleared: _cleared,
-            LegacyCheckNumber: _importSpinelfinRefs ? null : _checkNumber,
-            LegacyMemo: _tranMemo,
-            LegacySpinelfinRef: _importSpinelfinRefs ? _checkNumber : null
+            LegacyRef: _checkNumber,
+            LegacyMemo: _tranMemo
         });
 
         return transactionID;
@@ -55,7 +53,7 @@ async function writeZeroRecord(pool) {
             AccountName: _accountName,
             ReferenceDate: _tranDate,
             Reconciled: _reconciled,
-            LegacySpinelfinRef: _importSpinelfinRefs ? _checkNumber : null
+            LegacyRef: _checkNumber
         });
 
         return zeroRecordID;
@@ -134,7 +132,7 @@ module.exports = {
         _accountNames = response.recordset.map(a => a.AccountName)
 
         _bcp = ((argv ?? false) && argv.bcp)
-        _importSpinelfinRefs = (process.env.IMPORT_SPINELFIN_REFS_FROM_QIF === 'true');
+        let _initialLoad = (process.env.SQL_INITIAL_LOAD === 'true');
 
         if (_bcp) {
             await pool.request().execute('spClearLegacyStagingTables');
@@ -339,7 +337,7 @@ module.exports = {
 
             await Promise.all(bcpTables.map(bcpTable => new Promise((resolve, reject) => bcpObject.loadTable(bcpTable.tableName, bcpTable.tableData, resolve, reject))));
 
-            await pool.request().execute('spPopulateFromLegacyStaging');
+            await pool.request().input('InitialLoad', sql.Bit, _initialLoad).execute('spPopulateFromLegacyStaging');
         }
 
         return;

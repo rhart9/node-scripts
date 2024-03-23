@@ -2,6 +2,12 @@ require('dotenv').config();
 const sql = require('mssql/msnodesqlv8');
 const csv = require("csv-parse/sync");
 
+let { v4: uuidv4 } = require('uuid');
+
+let _exportToQIF = true;
+let _exportToSQL = true;
+let _batchGUID = uuidv4();
+
 function qifEntry(date, amount, payee) {
     return `
 D${date}
@@ -11,10 +17,10 @@ P${payee}
 `.trim();
 }
 
-function processFile(lines, importAlgorithm, reverseSign) {
+async function processFile(lines, importAlgorithm, reverseSign, accountID, pool) {
     let text = '';
 
-    lines.forEach(function (line, i) {
+    for (let line of lines) {
         let date, payee, amount;
         let skipEntry = false;
 
@@ -66,9 +72,23 @@ function processFile(lines, importAlgorithm, reverseSign) {
 
             let dateStr = date.toLocaleDateString("en-us", { timeZone: "UTC" });
 
-            text += qifEntry(dateStr, amount, payee) + '\n';
+            if (_exportToQIF) {
+                text += qifEntry(dateStr, amount, payee) + '\n';
+            }
+
+            if (_exportToSQL) {
+                let stmt = "INSERT INTO BankStagingTransaction(AccountID, TransactionDate, Payee, Amount, BatchGUID) VALUES(@AccountID, @TransactionDate, @Payee, @Amount, @BatchGUID)"
+
+                await pool.request()
+                    .input('AccountID', sql.Int, accountID)
+                    .input('TransactionDate', sql.Date, date)
+                    .input('Payee', sql.NVarChar, payee)
+                    .input('Amount', sql.Decimal(10, 2), amount)
+                    .input('BatchGUID', sql.UniqueIdentifier, _batchGUID)
+                    .query(stmt);
+            }
         }
-    });
+    }
 
     return text;
 }
@@ -96,6 +116,8 @@ module.exports = {
         let activeFolder = process.env.BANK_CSV_ACTIVE;
 
         let combineAccounts = ((argv ?? false) && argv.combineAccounts)
+        _exportToQIF = (process.env.TXNFILE_EXPORT_TO_QIF === 'true');
+        _exportToSQL = (process.env.TXNFILE_EXPORT_TO_SQL === 'true');
 
         await require('./fetch-txnfiles').fetch();
 
@@ -113,12 +135,13 @@ module.exports = {
                 if (!fileType)
                     throw new Error(`Input file ${inputFileName} has an undefined file type.  File is being skipped.  Update fileinfo.json appropriately.`);
 
-                let query = "SELECT a.AccountName, a.ImportAlgorithm, a.SkipFirstLine, a.ReverseSign, qt.QIFType, qt.AccountType " +
+                let query = "SELECT a.AccountID, a.AccountName, a.ImportAlgorithm, a.SkipFirstLine, a.ReverseSign, qt.QIFType, qt.AccountType " +
                             "FROM Account a " +
                             "INNER JOIN QIFType qt ON a.QIFTypeID = qt.QIFTypeID " +
                             "WHERE a.AWSFileType = @FileType"
 
                 let response = await pool.request().input('FileType', sql.NVarChar, fileType).query(query);
+                let accountID = response.recordset[0].AccountID
                 let accountName = response.recordset[0].AccountName
                 let importAlgorithm = response.recordset[0].ImportAlgorithm
                 let skipFirstLine = response.recordset[0].SkipFirstLine
@@ -140,11 +163,14 @@ module.exports = {
                     bom: true
                   });
 
-                if (!outputFileMap.has(accountName)) {
-                    outputFileMap.set(accountName, { "accountType": accountType, "text": `!Type:${qifType}\n` });
-                }
+                let output = await processFile(lines, importAlgorithm, reverseSign, accountID, pool);
 
-                outputFileMap.get(accountName).text += processFile(lines, importAlgorithm, reverseSign);
+                if (_exportToQIF) {
+                    if (!outputFileMap.has(accountName)) {
+                        outputFileMap.set(accountName, { "accountType": accountType, "text": `!Type:${qifType}\n` });
+                    }
+                    outputFileMap.get(accountName).text += output;
+                }
 
                 procFileInfos.push({
                     fileName: fileInfo.fileName
@@ -157,30 +183,43 @@ module.exports = {
             }
         }
 
-        let combinedOutputText;
+        if (_exportToQIF) {
+            let combinedOutputText;
 
-        if (combineAccounts) {
-            combinedOutputText = "!Option:AutoSwitch\n";
-        }
-
-        for (let [accountName, value] of outputFileMap) {
             if (combineAccounts) {
-                combinedOutputText += `!Account\nN${accountName}\nT${value.accountType}\n^\n${value.text}\n`
+                combinedOutputText = "!Option:AutoSwitch\n";
             }
-            else
-            {
-                let accountOutputPath = path.join(legacyImportFolder, `transactions-${accountName}.qif`);
 
-                await fs.writeFile(accountOutputPath, value.text);
-                console.log(`QIF file generated. Account: ${accountName} Output File: ${accountOutputPath}`);
+            for (let [accountName, value] of outputFileMap) {
+                if (combineAccounts) {
+                    combinedOutputText += `!Account\nN${accountName}\nT${value.accountType}\n^\n${value.text}\n`
+                }
+                else
+                {
+                    let accountOutputPath = path.join(legacyImportFolder, `transactions-${accountName}.qif`);
+
+                    await fs.writeFile(accountOutputPath, value.text);
+                    console.log(`QIF file generated. Account: ${accountName} Output File: ${accountOutputPath}`);
+                }
+            }
+
+            if (combineAccounts) {
+                let combinedOutputPath = path.join(legacyImportFolder, `transactions-from-bank-file.qif`);
+
+                await fs.writeFile(combinedOutputPath, combinedOutputText);
+                console.log(`Combined QIF file generated. Output File: ${combinedOutputPath}`);
             }
         }
 
-        if (combineAccounts) {
-            let combinedOutputPath = path.join(legacyImportFolder, `transactions-new-allaccts.qif`);
+        if (_exportToSQL) {
+            let autoPopulateFriendlyDesc = (process.env.AUTO_POPULATE_FRIENDLY_DESC === 'true');
 
-            await fs.writeFile(combinedOutputPath, combinedOutputText);
-            console.log(`Combined QIF file generated. Output File: ${combinedOutputPath}`);
+            await pool.request()
+                .input('BatchGUID', sql.UniqueIdentifier, _batchGUID)
+                .input('AutoPopulateFriendlyDescription', sql.Bit, autoPopulateFriendlyDesc)
+                .execute("spPopulateFromBankStaging");
+
+            console.log(`AccountTransaction table populated.`)
         }
 
         let jsonModified = false;
