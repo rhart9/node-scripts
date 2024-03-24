@@ -20,11 +20,11 @@
             "outputCapture": "std"
         },
         {
-            "name": "QIF to SQL",
+            "name": "SQL TO QIF",
             "request": "launch",
             "runtimeArgs": [
                 "run",
-                "qif-to-sql"
+                "sql-to-qif"
             ],
             "runtimeExecutable": "npm",
             "skipFiles": [
@@ -40,21 +40,6 @@
             "runtimeArgs": [
                 "run",
                 "qif-to-sql-bcp"
-            ],
-            "runtimeExecutable": "npm",
-            "skipFiles": [
-                "<node_internals>/**"
-            ],
-            "type": "node", 
-            "console": "integratedTerminal",
-            "outputCapture": "std"
-        },
-        {
-            "name": "SQL TO QIF",
-            "request": "launch",
-            "runtimeArgs": [
-                "run",
-                "sql-to-qif"
             ],
             "runtimeExecutable": "npm",
             "skipFiles": [
