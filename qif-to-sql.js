@@ -140,8 +140,6 @@ module.exports = {
         else {
             await pool.request().execute('spClearAllTransactions');
         }
-        await pool.request().execute('spExtendLegacySwitchoverDate'); // if we're still running this script, it should be extended
-        await pool.request().execute('spExtendCategories');
 
         let filesToProcess;
 
