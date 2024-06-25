@@ -30,7 +30,7 @@ async function processFile(lines, importAlgorithm, reverseSign, accountID, pool)
             amount = line["Amount"];
         }
         else if (importAlgorithm.toLowerCase() == "amco") {
-            date = new Date(line["Date"]);
+            date = new Date(line["Transaction Date"]);
             payee = line["Merchant Name"];
             amount = line["Amount"].replace(/[\$,]/g,"");
 
