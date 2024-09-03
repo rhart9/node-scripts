@@ -30,7 +30,15 @@ async function processFile(lines, importAlgorithm, reverseSign, accountID, pool)
             amount = line["Amount"];
         }
         else if (importAlgorithm.toLowerCase() == "amco") {
-            date = new Date(line["Transaction Date"]);
+            if (line.hasOwnProperty("TransactionDate")) {
+                date = new Date(line["Transaction Date"]);
+            }
+            else if (line.hasOwnProperty("Date")) {
+                date = new Date(line["Date"]);
+            }
+            else {
+                throw new Error("Date field not found in file with amco algorithm");
+            }
             payee = line["Merchant Name"];
             amount = line["Amount"].replace(/[\$,]/g,"");
 
