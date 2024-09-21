@@ -32,7 +32,7 @@ module.exports = {
             Delimiter: '/'
         }));
 
-        let folderInfos = [{ fileType: null, contents: (listObjectsResponse.Contents ? listObjectsResponse.Contents.filter(item => item.Key != rootPrefix) : null) }]
+        let folderInfos = [{ awsSubfolder: null, contents: (listObjectsResponse.Contents ? listObjectsResponse.Contents.filter(item => item.Key != rootPrefix) : null) }]
 
         if (listObjectsResponse.CommonPrefixes) {
             let commonPrefixes = listObjectsResponse.CommonPrefixes;
@@ -43,16 +43,16 @@ module.exports = {
                     Delimiter: '/'
                 }));
                 
-                let fileType = commonPrefix.Prefix.replace(rootPrefix, '').replace('/', '');
+                let awsSubfolder = commonPrefix.Prefix.replace(rootPrefix, '').replace('/', '');
 
-                folderInfos.push({ fileType: fileType, contents: (listObjectsResponse.Contents ? listObjectsResponse.Contents.filter(item => item.Key != commonPrefix.Prefix) : null) })
+                folderInfos.push({ awsSubfolder: awsSubfolder, contents: (listObjectsResponse.Contents ? listObjectsResponse.Contents.filter(item => item.Key != commonPrefix.Prefix) : null) })
                 resolve();
             })));
         }
 
         await Promise.all(folderInfos.map(folderInfo => new Promise(async (resolve, reject) => {
             let contents = folderInfo.contents;
-            let fileType = folderInfo.fileType;
+            let awsSubfolder = folderInfo.awsSubfolder;
 
             if (contents && contents.length > 0) {
                 await Promise.all(contents.map(item => new Promise(async (resolve, reject) => {
@@ -65,8 +65,24 @@ module.exports = {
                     try {
                         let response = await client.send(new GetObjectCommand(params));
 
-                        let prefix = fileType ? `${rootPrefix}${fileType}/` : rootPrefix;
+                        let prefix = awsSubfolder ? `${rootPrefix}${awsSubfolder}/` : rootPrefix;
                         let localFileName = item.Key.replace(prefix, '');
+
+                        let fileType;
+
+                        if (awsSubfolder == null) {
+                            awsSubfolder = response.Metadata.filetype;
+                        }
+                        else {
+                            let delimIndex = awsSubfolder.indexOf('-');
+
+                            if (delimIndex > 0 && delimIndex < awsSubfolder.length - 1) {
+                                fileType = awsSubfolder.substring(delimIndex + 1);
+                            }
+                            else {
+                                fileType = awsSubfolder;
+                            }
+                        }
 
                         let writeStream = fs.createWriteStream(path.join(activeFolder, localFileName));
 
@@ -80,7 +96,7 @@ module.exports = {
                         response.Body.once('end', async () => {
                             procFileInfos.push({
                                 fileName: localFileName,
-                                fileType: fileType ?? response.Metadata.filetype
+                                fileType: fileType
                             });
                             writeStream.end();
 
@@ -110,6 +126,14 @@ module.exports = {
 
         await Promise.all(subDirs.map(dir => new Promise(async (resolve, reject) => {
             let subDirName = dir.name;
+            let fileType = subDirName;
+
+            let delimIndex = subDirName.indexOf('-');
+
+            if (delimIndex > 0 && delimIndex < subDirName.length - 1) {
+                fileType = subDirName.substring(delimIndex + 1);
+            }
+
             let files = (await fsPromises.readdir(path.join(manualDir, subDirName)))
 
             await Promise.all(files.map(file => new Promise(async(resolve, reject) => {
@@ -118,7 +142,7 @@ module.exports = {
                 await fsPromises.rename(path.join(manualDir, subDirName, file), path.join(activeFolder, file));
                 procFileInfos.push({
                     fileName: file,
-                    fileType: subDirName
+                    fileType: fileType
                 });
                 resolve();
             })));
