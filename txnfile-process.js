@@ -30,7 +30,7 @@ async function processFile(lines, importAlgorithm, reverseSign, accountID, pool)
             amount = line["Amount"];
         }
         else if (importAlgorithm.toLowerCase() == "amco") {
-            if (line.hasOwnProperty("TransactionDate")) {
+            if (line.hasOwnProperty("Transaction Date")) {
                 date = new Date(line["Transaction Date"]);
             }
             else if (line.hasOwnProperty("Date")) {
