@@ -21,13 +21,17 @@ async function processFile(lines, importAlgorithm, reverseSign, accountID, pool)
     let text = '';
 
     for (let line of lines) {
-        let date, payee, amount;
+        let date, payee, amount, checkNo;
         let skipEntry = false;
 
         if (importAlgorithm.toLowerCase() == "citizens") {
             date = new Date(line["Date"]);
             payee = line["Description"];
             amount = line["Amount"];
+
+            if (line["Transaction Type"] == "CHECK") {
+                checkNo = line["Reference No."];
+            }
         }
         else if (importAlgorithm.toLowerCase() == "amco") {
             if (line.hasOwnProperty("Transaction Date")) {
@@ -85,7 +89,7 @@ async function processFile(lines, importAlgorithm, reverseSign, accountID, pool)
             }
 
             if (_exportToSQL) {
-                let stmt = "INSERT INTO BankStagingTransaction(AccountID, TransactionDate, Payee, Amount, BatchGUID) VALUES(@AccountID, @TransactionDate, @Payee, @Amount, @BatchGUID)"
+                let stmt = "INSERT INTO BankStagingTransaction(AccountID, TransactionDate, Payee, Amount, BatchGUID, CheckNumber) VALUES(@AccountID, @TransactionDate, @Payee, @Amount, @BatchGUID, @CheckNumber)"
 
                 await pool.request()
                     .input('AccountID', sql.Int, accountID)
@@ -93,6 +97,7 @@ async function processFile(lines, importAlgorithm, reverseSign, accountID, pool)
                     .input('Payee', sql.NVarChar, payee)
                     .input('Amount', sql.Decimal(10, 2), amount)
                     .input('BatchGUID', sql.UniqueIdentifier, _batchGUID)
+                    .input('CheckNumber', sql.NVarChar, checkNo)
                     .query(stmt);
             }
         }
@@ -227,6 +232,7 @@ module.exports = {
                 .input('BatchGUID', sql.UniqueIdentifier, _batchGUID)
                 .input('AutoPopulateFriendlyDescription', sql.Bit, autoPopulateFriendlyDesc)
                 .input('ExportToLegacy', sql.Bit, exportToLegacy)
+                .input('CheckNumberSequence', sql.Int, process.env.CHECK_NUMBER_SEQUENCE)
                 .execute("spPopulateFromBankStaging");
 
             console.log(`AccountTransaction table populated.`)
