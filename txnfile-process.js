@@ -29,9 +29,9 @@ async function processFile(lines, importAlgorithm, reverseSign, accountID, pool)
             payee = line["Description"];
             amount = line["Amount"];
 
-            if (line["Transaction Type"] == "CHECK") {
+            //if (line["Transaction Type"] == "CHECK") {
                 checkNo = line["Reference No."];
-            }
+            //}
         }
         else if (importAlgorithm.toLowerCase() == "amco") {
             if (line.hasOwnProperty("Transaction Date")) {
@@ -225,12 +225,10 @@ module.exports = {
         }
 
         if (_exportToSQL) {
-            let autoPopulateFriendlyDesc = (process.env.AUTO_POPULATE_FRIENDLY_DESC === 'true');
             let exportToLegacy = (process.env.EXPORT_TO_LEGACY === 'true');
 
             await pool.request()
                 .input('BatchGUID', sql.UniqueIdentifier, _batchGUID)
-                .input('AutoPopulateFriendlyDescription', sql.Bit, autoPopulateFriendlyDesc)
                 .input('ExportToLegacy', sql.Bit, exportToLegacy)
                 .input('CheckNumberSequence', sql.Int, process.env.CHECK_NUMBER_SEQUENCE)
                 .execute("spPopulateFromBankStaging");
